@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+sentence-transformers
+transformers
+bertopic
+whisper
+chromadb
+numpy
+pytest
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart

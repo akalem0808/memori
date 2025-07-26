@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Explorer - Audio-Visual Memory Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #000000;
+            color: #ffffff;
+            font-weight: 400;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            color: #cccccc;
+            font-weight: 400;
+        }
+
+        /* View Mode Toggle */
+        .view-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .view-button {
+            background: #1a1a1a;
+            border: 2px solid #333333;
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .view-button.active {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
+        }
+
+        .view-button:hover {
+            border-color: #666666;
+        }
+
+        /* Search and Filters */
+        .controls-section {
+            background: #1a1a1a;
+            border: 1px solid #333333;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .search-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 300px;
+            padding: 15px 20px;
+            border: 2px solid #333333;
+            border-radius: 25px;
+            background: #000000;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #ffffff;
+        }
+
+        .search-button {
+            background: #ffffff;
+            color: #000000;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .search-button:hover {
+            background: #cccccc;
+        }
+
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .filter-group {
+            background: #222222;
+            border: 1px solid #333333;
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .filter-group h4 {
+            color: #ffffff;
+            font-weight: 600;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+
+        .filter-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .filter-tag {
+            background: #333333;
+            color: #cccccc;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid #444444;
+        }
+
+        .filter-tag.active {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
+        }
+
+        /* Memory Views */
+        .memory-view {
+            display: none;
+        }
+
+        .memory-view.active {
+            display: block;
+        }
+
+        /* Timeline View */
+        .timeline-container {
+            position: relative;
+            padding-left: 30px;
+        }
+
+        .timeline-line {
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #333333;
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+            background: #1a1a1a;
+            border: 1px solid #333333;
+            border-radius: 15px;
+            padding: 25px;
+            margin-left: 20px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -35px;
+            top: 20px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ffffff;
+        }
+
+        .memory-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .memory-timestamp {
+            color: #cccccc;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .memory-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .memory-tag {
+            background: #333333;
+            color: #ffffff;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+
+        .memory-tag.emotion { background: #444444; }
+        .memory-tag.location { background: #555555; }
+        .memory-tag.stress { background: #666666; }
+        .memory-tag.engagement { background: #777777; }
+
+        .memory-content {
+            margin-bottom: 15px;
+        }
+
+        .memory-text {
+            color: #ffffff;
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .context-summary {
+            background: #222222;
+            border: 1px solid #333333;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .context-summary h5 {
+            color: #ffffff;
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .context-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .context-item {
+            text-align: center;
+            padding: 10px;
+            background: #1a1a1a;
+            border-radius: 8px;
+        }
+
+        .context-value {
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .context-label {
+            color: #cccccc;
+            font-size: 0.8rem;
+            margin-top: 5px;
+        }
+
+        /* Card View */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 25px;
+        }
+
+        .memory-card {
+            background: #1a1a1a;
+            border: 1px solid #333333;
+            border-radius: 15px;
+            padding: 25px;
+            transition: all 0.3s ease;
+        }
+
+        .memory-card:hover {
+            border-color: #555555;
+            transform: translateY(-5px);
+        }
+
+        /* Map View */
+        .map-container {
+            background: #1a1a1a;
+            border: 1px solid #333333;
+            border-radius: 15px;
+            padding: 20px;
+            height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #cccccc;
+            font-size: 1.1rem;
+        }
+
+        /* Chart View */
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+        }
+
+        .chart-card {
+            background: #1a1a1a;
+            border: 1px solid #333333;
+            border-radius: 15px;
+            padding: 25px;
+        }
+
+        .chart-card h3 {
+            color: #ffffff;
+            font-weight: 600;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        /* Calendar View */
+        .calendar-container {
+            background: #1a1a1a;
+            border: 1px solid #333333;
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            background: #222222;
+            border: 1px solid #333333;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 8px;
+        }
+
+        .calendar-day:hover {
+            background: #333333;
+        }
+
+        .calendar-day.has-memories {
+            border-color: #ffffff;
+            background: #2a2a2a;
+        }
+
+        .calendar-day-number {
+            color: #ffffff;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .calendar-day-count {
+            color: #cccccc;
+            font-size: 0.7rem;
+        }
+
+        /* Memory Detail Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: #1a1a1a;
+            border: 1px solid #333333;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            width: 100%;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .modal-title {
+            color: #ffffff;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: #cccccc;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .close-button:hover {
+            color: #ffffff;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .search-container {
+                flex-direction: column;
+            }
+
+            .search-input {
+                min-width: auto;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Memory Explorer</h1>
+            <p>Browse and analyze your audio-visual memories</p>
+        </div>
+
+        <!-- View Mode Toggle -->
+        <div class="view-toggle">
+            <button class="view-button active" data-view="timeline">Timeline View</button>
+            <button class="view-button" data-view="cards">Card View</button>
+            <button class="view-button" data-view="map">Location Map</button>
+            <button class="view-button" data-view="charts">Analytics</button>
+            <button class="view-button" data-view="calendar">Calendar View</button>
+        </div>
+
+        <!-- Search and Filters -->
+        <div class="controls-section">
+            <div class="search-container">
+                <input type="text" class="search-input" id="memorySearch" placeholder="Search your memories... e.g., 'meetings with high engagement'">
+                <button class="search-button" id="searchButton">Search</button>
+            </div>
+
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <h4>Time Period</h4>
+                    <div class="filter-options">
+                        <span class="filter-tag" data-filter="time:today">Today</span>
+                        <span class="filter-tag" data-filter="time:week">This Week</span>
+                        <span class="filter-tag" data-filter="time:month">This Month</span>
+                        <span class="filter-tag" data-filter="time:year">This Year</span>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h4>Emotions</h4>
+                    <div class="filter-options">
+                        <span class="filter-tag" data-filter="emotion:joy">Joy</span>
+                        <span class="filter-tag" data-filter="emotion:sadness">Sadness</span>
+                        <span class="filter-tag" data-filter="emotion:anger">Anger</span>
+                        <span class="filter-tag" data-filter="emotion:fear">Fear</span>
+                        <span class="filter-tag" data-filter="emotion:surprise">Surprise</span>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h4>Engagement Level</h4>
+                    <div class="filter-options">
+                        <span class="filter-tag" data-filter="engagement:high">High (80%+)</span>
+                        <span class="filter-tag" data-filter="engagement:medium">Medium (50-80%)</span>
+                        <span class="filter-tag" data-filter="engagement:low">Low (<50%)</span>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h4>Location Type</h4>
+                    <div class="filter-options">
+                        <span class="filter-tag" data-filter="location:office">Office</span>
+                        <span class="filter-tag" data-filter="location:home">Home</span>
+                        <span class="filter-tag" data-filter="location:meeting_room">Meeting Room</span>
+                        <span class="filter-tag" data-filter="location:outdoor">Outdoor</span>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h4>Context</h4>
+                    <div class="filter-options">
+                        <span class="filter-tag" data-filter="context:high_stress">High Stress</span>
+                        <span class="filter-tag" data-filter="context:multitasking">Multitasking</span>
+                        <span class="filter-tag" data-filter="context:focused">Highly Focused</span>
+                        <span class="filter-tag" data-filter="context:interrupted">Interrupted</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Views -->
+        
+        <!-- Timeline View -->
+        <div class="memory-view active" id="timelineView">
+            <div class="timeline-container">
+                <div class="timeline-line"></div>
+                <div id="timelineMemories">
+                    <!-- Timeline items will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Card View -->
+        <div class="memory-view" id="cardsView">
+            <div class="cards-grid" id="memoryCards">
+                <!-- Memory cards will be populated here -->
+            </div>
+        </div>
+
+        <!-- Map View -->
+        <div class="memory-view" id="mapView">
+            <div class="map-container">
+                <div>
+                    <h3 style="margin-bottom: 10px;">Location-based Memory Map</h3>
+                    <p>Interactive map showing where your memories were created</p>
+                    <p style="margin-top: 20px; font-size: 0.9rem; color: #999;">
+                        Integration with mapping services would show memory locations with clustering and filtering
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts View -->
+        <div class="memory-view" id="chartsView">
+            <div class="charts-container">
+                <div class="chart-card">
+                    <h3>Emotion Patterns Over Time</h3>
+                    <canvas id="emotionTimeChart" height="300"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Engagement vs Stress Levels</h3>
+                    <canvas id="engagementStressChart" height="300"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Memory Creation by Location</h3>
+                    <canvas id="locationChart" height="300"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Daily Memory Volume</h3>
+                    <canvas id="volumeChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar View -->
+        <div class="memory-view" id="calendarView">
+            <div class="calendar-container">
+                <h3 style="margin-bottom: 20px; color: #ffffff;">Memory Calendar</h3>
+                <div class="calendar-grid" id="memoryCalendar">
+                    <!-- Calendar will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Memory Detail Modal -->
+    <div class="modal" id="memoryModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Memory Details</h2>
+                <button class="close-button" id="closeModal">&times;</button>
+            </div>
+            <div id="modalBody">
+                <!-- Memory details will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class MemoryExplorer {
+            constructor() {
+                this.currentView = 'timeline';
+                this.activeFilters = {};
+                this.memories = this.loadMemories();
+                this.filteredMemories = [...this.memories];
+                
+                this.initializeEventListeners();
+                this.renderCurrentView();
+                this.setupCharts();
+            }
+
+            initializeEventListeners() {
+                // View toggle buttons
+                document.querySelectorAll('.view-button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        this.switchView(e.target.dataset.view);
+                    });
+                });
+
+                // Search
+                document.getElementById('searchButton').addEventListener('click', () => {
+                    this.performSearch();
+                });
+
+                document.getElementById('memorySearch').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.performSearch();
+                    }
+                });
+
+                // Filters
+                document.querySelectorAll('.filter-tag').forEach(tag => {
+                    tag.addEventListener('click', (e) => {
+                        this.toggleFilter(e.target);
+                    });
+                });
+
+                // Modal
+                document.getElementById('closeModal').addEventListener('click', () => {
+                    this.closeModal();
+                });
+
+                document.getElementById('memoryModal').addEventListener('click', (e) => {
+                    if (e.target.id === 'memoryModal') {
+                        this.closeModal();
+                    }
+                });
+            }
+
+            loadMemories() {
+                // Load from localStorage or generate sample data
+                const stored = localStorage.getItem('audioVisualMemories');
+                if (stored) {
+                    return JSON.parse(stored);
+                }
+
+                // Generate sample memories for demonstration
+                return this.generateSampleMemories();
+            }
+
+            generateSampleMemories() {
+                const sampleMemories = [];
+                const emotions = ['joy', 'sadness', 'anger', 'fear', 'surprise', 'neutral'];
+                const locations = ['office', 'home', 'meeting_room', 'outdoor', 'restaurant'];
+                const gestures = ['open_arms', 'crossed_arms', 'hand_to_face', 'pointing', 'neutral'];
+                
+                const sampleTexts = [
+                    "Had a productive team meeting discussing the quarterly results",
+                    "Brainstormed ideas for the new product launch",
+                    "Reviewed budget allocations with the finance team", 
+                    "Presented project updates to stakeholders",
+                    "Collaborated on the marketing strategy",
+                    "Discussed technical implementation details",
+                    "Planned the upcoming conference presentation",
+                    "Reviewed customer feedback and improvement suggestions"
+                ];
+
+                for (let i = 0; i < 50; i++) {
+                    const timestamp = Date.now() / 1000 - (Math.random() * 30 * 24 * 60 * 60); // Last 30 days
+                    const emotion = emotions[Math.floor(Math.random() * emotions.length)];
+                    const location = locations[Math.floor(Math.random() * locations.length)];
+                    const gesture = gestures[Math.floor(Math.random() * gestures.length)];
+                    
+                    sampleMemories.push({
+                        id: `memory_${i}`,
+                        timestamp: timestamp,
+                        date: new Date(timestamp * 1000).toISOString(),
+                        audio_text: sampleTexts[Math.floor(Math.random() * sampleTexts.length)],
+                        emotion: emotion,
+                        movement_data: {
+                            movement_intensity: Math.random() * 0.8 + 0.1,
+                            engagement_level: Math.random() * 0.6 + 0.3,
+                            gesture_type: gesture,
+                            body_language_summary: `${gesture.replace('_', ' ')} with ${Math.round(Math.random() * 40 + 40)}% engagement`
+                        },
+                        context_data: {
+                            environmental: {
+                                venue_type: location,
+                                weather_conditions: ['sunny', 'cloudy', 'rainy'][Math.floor(Math.random() * 3)],
+                                room_temperature: Math.round(Math.random() * 10 + 20)
+                            },
+                            biometric: {
+                                stress_score: Math.random() * 0.8 + 0.1,
+                                energy_level: Math.random() * 0.8 + 0.2,
+                                heart_rate: Math.round(Math.random() * 40 + 60)
+                            },
+                            cognitive: {
+                                attention_level: Math.random() * 0.8 + 0.2,
+                                focus_quality: Math.random() * 0.7 + 0.3
+                            }
+                        },
+                        importance_score: Math.random() * 0.6 + 0.4
+                    });
+                }
+
+                return sampleMemories.sort((a, b) => b.timestamp - a.timestamp);
+            }
+
+            switchView(viewName) {
+                // Update button states
+                document.querySelectorAll('.view-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelector(`[data-view="${viewName}"]`).classList.add('active');
+
+                // Update view visibility
+                document.querySelectorAll('.memory-view').forEach(view => {
+                    view.classList.remove('active');
+                });
+                document.getElementById(`${viewName}View`).classList.add('active');
+
+                this.currentView = viewName;
+                this.renderCurrentView();
+            }
+
+            toggleFilter(filterTag) {
+                const filter = filterTag.dataset.filter;
+                const [type, value] = filter.split(':');
+
+                if (filterTag.classList.contains('active')) {
+                    filterTag.classList.remove('active');
+                    delete this.activeFilters[type];
+                } else {
+                    // Remove other filters of same type
+                    document.querySelectorAll(`[data-filter^="${type}:"]`).forEach(tag => {
+                        tag.classList.remove('active');
+                    });
+                    
+                    filterTag.classList.add('active');
+                    this.activeFilters[type] = value;
+                }
+
+                this.applyFilters();
+            }
+
+            applyFilters() {
+                this.filteredMemories = this.memories.filter(memory => {
+                    // Apply time filter
+                    if (this.activeFilters.time) {
+                        const now = Date.now() / 1000;
+                        const cutoffs = {
+                            today: now - 24 * 60 * 60,
+                            week: now - 7 * 24 * 60 * 60,
+                            month: now - 30 * 24 * 60 * 60,
+                            year: now - 365 * 24 * 60 * 60
+                        };
+                        
+                        if (memory.timestamp < cutoffs[this.activeFilters.time]) {
+                            return false;
+                        }
+                    }
+
+                    // Apply emotion filter
+                    if (this.activeFilters.emotion && memory.emotion !== this.activeFilters.emotion) {
+                        return false;
+                    }
+
+                    // Apply engagement filter
+                    if (this.activeFilters.engagement) {
+                        const engagement = memory.movement_data.engagement_level;
+                        const thresholds = { high: 0.8, medium: [0.5, 0.8], low: 0.5 };
+                        const filter = this.activeFilters.engagement;
+                        
+                        if (filter === 'high' && engagement < thresholds.high) return false;
+                        if (filter === 'medium' && (engagement < thresholds.medium[0] || engagement >= thresholds.medium[1])) return false;
+                        if (filter === 'low' && engagement >= thresholds.low) return false;
+                    }
+
+                    // Apply location filter
+                    if (this.activeFilters.location && memory.context_data.environmental.venue_type !== this.activeFilters.location) {
+                        return false;
+                    }
+
+                    // Apply context filters
+                    if (this.activeFilters.context) {
+                        const context = this.activeFilters.context;
+                        const bio = memory.context_data.biometric;
+                        const cog = memory.context_data.cognitive;
+                        
+                        if (context === 'high_stress' && bio.stress_score < 0.7) return false;
+                        if (context === 'focused' && cog.focus_quality < 0.7) return false;
+                        // Add more context filters as needed
+                    }
+
+                    return true;
+                });
+
+                this.renderCurrentView();
+            }
+
+            performSearch() {
+                const query = document.getElementById('memorySearch').value.toLowerCase().trim();
+                
+                if (!query) {
+                    this.filteredMemories = [...this.memories];
+                } else {
+                    this.filteredMemories = this.memories.filter(memory => {
+                        return memory.audio_text.toLowerCase().includes(query) ||
+                               memory.emotion.toLowerCase().includes(query) ||
+                               memory.movement_data.gesture_type.toLowerCase().includes(query) ||
+                               memory.context_data.environmental.venue_type?.toLowerCase().includes(query);
+                    });
+                }
+
+                this.applyFilters();
+            }
+
+            renderCurrentView() {
+                switch (this.currentView) {
+                    case 'timeline':
+                        this.renderTimelineView();
+                        break;
+                    case 'cards':
+                        this.renderCardsView();
+                        break;
+                    case 'calendar':
+                        this.renderCalendarView();
+                        break;
+                    // Map view would integrate with mapping library
+                    // Charts view updates charts with filtered data
+                }
+            }
+
+            renderTimelineView() {
+                const container = document.getElementById('timelineMemories');
+                container.innerHTML = '';
+
+                this.filteredMemories.forEach(memory => {
+                    const item = document.createElement('div');
+                    item.className = 'timeline-item';
+                    item.innerHTML = this.generateMemoryHTML(memory);
+                    item.addEventListener('click', () => this.showMemoryDetail(memory));
+                    container.appendChild(item);
+                });
+            }
+
+            renderCardsView() {
+                const container = document.getElementById('memoryCards');
+                container.innerHTML = '';
+
+                this.filteredMemories.forEach(memory => {
+                    const card = document.createElement('div');
+                    card.className = 'memory-card';
+                    card.innerHTML = this.generateMemoryHTML(memory);
+                    card.addEventListener('click', () => this.showMemoryDetail(memory));
+                    container.appendChild(card);
+                });
+            }
+
+            renderCalendarView() {
+                const container = document.getElementById('memoryCalendar');
+                container.innerHTML = '';
+
+                // Generate calendar for current month
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = now.getMonth();
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                const startDate = new Date(firstDay);
+                startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+                // Group memories by date
+                const memoriesByDate = {};
+                this.filteredMemories.forEach(memory => {
+                    const date = new Date(memory.timestamp * 1000);
+                    const dateKey = date.toDateString();
+                    if (!memoriesByDate[dateKey]) {
+                        memoriesByDate[dateKey] = [];
+                    }
+                    memoriesByDate[dateKey].push(memory);
+                });
+
+                // Generate calendar grid (6 weeks)
+                for (let i = 0; i < 42; i++) {
+                    const currentDate = new Date(startDate);
+                    currentDate.setDate(startDate.getDate() + i);
+                    const dateKey = currentDate.toDateString();
+                    const memories = memoriesByDate[dateKey] || [];
+                    const isCurrentMonth = currentDate.getMonth() === month;
+
+                    const dayEl = document.createElement('div');
+                    dayEl.className = `calendar-day ${memories.length > 0 ? 'has-memories' : ''}`;
+                    dayEl.style.opacity = isCurrentMonth ? '1' : '0.3';
+                    
+                    dayEl.innerHTML = `
+                        <div class="calendar-day-number">${currentDate.getDate()}</div>
+                        ${memories.length > 0 ? `<div class="calendar-day-count">${memories.length} memories</div>` : ''}
+                    `;
+
+                    if (memories.length > 0) {
+                        dayEl.addEventListener('click', () => this.showDayMemories(dateKey, memories));
+                    }
+
+                    container.appendChild(dayEl);
+                }
+            }
+
+            generateMemoryHTML(memory) {
+                const date = new Date(memory.timestamp * 1000);
+                const engagement = Math.round(memory.movement_data.engagement_level * 100);
+                const stress = Math.round(memory.context_data.biometric.stress_score * 100);
+                const movement = Math.round(memory.movement_data.movement_intensity * 100);
+
+                return `
+                    <div class="memory-header">
+                        <div class="memory-timestamp">${date.toLocaleString()}</div>
+                        <div class="memory-tags">
+                            <span class="memory-tag emotion">${memory.emotion}</span>
+                            <span class="memory-tag location">${memory.context_data.environmental.venue_type}</span>
+                            <span class="memory-tag engagement">${engagement}% engaged</span>
+                            <span class="memory-tag stress">${stress}% stress</span>
+                        </div>
+                    </div>
+                    <div class="memory-content">
+                        <div class="memory-text">${memory.audio_text}</div>
+                        <div class="context-summary">
+                            <h5>Multimodal Context</h5>
+                            <div class="context-grid">
+                                <div class="context-item">
+                                    <div class="context-value">${movement}%</div>
+                                    <div class="context-label">Movement</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${engagement}%</div>
+                                    <div class="context-label">Engagement</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${memory.context_data.biometric.heart_rate}</div>
+                                    <div class="context-label">Heart Rate</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${memory.context_data.environmental.room_temperature}°</div>
+                                    <div class="context-label">Temperature</div>
+                                </div>
+                            </div>
+                            <p style="margin-top: 10px; color: #cccccc; font-size: 0.9rem;">
+                                ${memory.movement_data.body_language_summary} • ${memory.context_data.environmental.weather_conditions} weather
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            showMemoryDetail(memory) {
+                const modal = document.getElementById('memoryModal');
+                const modalBody = document.getElementById('modalBody');
+
+                const date = new Date(memory.timestamp * 1000);
+                const engagement = Math.round(memory.movement_data.engagement_level * 100);
+                const stress = Math.round(memory.context_data.biometric.stress_score * 100);
+                const movement = Math.round(memory.movement_data.movement_intensity * 100);
+                const attention = Math.round(memory.context_data.cognitive.attention_level * 100);
+                const focus = Math.round(memory.context_data.cognitive.focus_quality * 100);
+
+                modalBody.innerHTML = `
+                    <div style="margin-bottom: 30px;">
+                        <h3 style="color: #ffffff; margin-bottom: 15px;">Memory from ${date.toLocaleString()}</h3>
+                        <div class="memory-tags" style="margin-bottom: 20px;">
+                            <span class="memory-tag emotion">${memory.emotion}</span>
+                            <span class="memory-tag location">${memory.context_data.environmental.venue_type}</span>
+                            <span class="memory-tag">${memory.movement_data.gesture_type.replace('_', ' ')}</span>
+                        </div>
+                        <div class="memory-text" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 30px;">
+                            "${memory.audio_text}"
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px;">
+                        <div class="context-summary">
+                            <h5>Body Language Analysis</h5>
+                            <div class="context-grid">
+                                <div class="context-item">
+                                    <div class="context-value">${movement}%</div>
+                                    <div class="context-label">Movement Intensity</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${engagement}%</div>
+                                    <div class="context-label">Engagement Level</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${memory.movement_data.gesture_type.replace('_', ' ').toUpperCase()}</div>
+                                    <div class="context-label">Primary Gesture</div>
+                                </div>
+                            </div>
+                            <p style="margin-top: 15px; color: #cccccc;">
+                                ${memory.movement_data.body_language_summary}
+                            </p>
+                        </div>
+
+                        <div class="context-summary">
+                            <h5>Biometric Context</h5>
+                            <div class="context-grid">
+                                <div class="context-item">
+                                    <div class="context-value">${memory.context_data.biometric.heart_rate}</div>
+                                    <div class="context-label">Heart Rate (bpm)</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${stress}%</div>
+                                    <div class="context-label">Stress Level</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${Math.round(memory.context_data.biometric.energy_level * 100)}%</div>
+                                    <div class="context-label">Energy Level</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="context-summary">
+                            <h5>Environmental Context</h5>
+                            <div class="context-grid">
+                                <div class="context-item">
+                                    <div class="context-value">${memory.context_data.environmental.room_temperature}°C</div>
+                                    <div class="context-label">Temperature</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${memory.context_data.environmental.weather_conditions.toUpperCase()}</div>
+                                    <div class="context-label">Weather</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${memory.context_data.environmental.venue_type.replace('_', ' ').toUpperCase()}</div>
+                                    <div class="context-label">Location Type</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="context-summary">
+                            <h5>Cognitive State</h5>
+                            <div class="context-grid">
+                                <div class="context-item">
+                                    <div class="context-value">${attention}%</div>
+                                    <div class="context-label">Attention Level</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${focus}%</div>
+                                    <div class="context-label">Focus Quality</div>
+                                </div>
+                                <div class="context-item">
+                                    <div class="context-value">${Math.round(memory.importance_score * 100)}%</div>
+                                    <div class="context-label">Memory Importance</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                modal.classList.add('active');
+            }
+
+            showDayMemories(dateKey, memories) {
+                const modal = document.getElementById('memoryModal');
+                const modalBody = document.getElementById('modalBody');
+
+                modalBody.innerHTML = `
+                    <h3 style="color: #ffffff; margin-bottom: 20px;">Memories from ${dateKey}</h3>
+                    <div style="max-height: 60vh; overflow-y: auto;">
+                        ${memories.map(memory => `
+                            <div class="memory-card" style="margin-bottom: 20px; cursor: pointer;" onclick="explorer.showMemoryDetail(${JSON.stringify(memory).replace(/"/g, '&quot;')})">
+                                ${this.generateMemoryHTML(memory)}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                modal.classList.add('active');
+            }
+
+            closeModal() {
+                document.getElementById('memoryModal').classList.remove('active');
+            }
+
+            setupCharts() {
+                // Initialize charts when charts view is selected
+                setTimeout(() => {
+                    this.createEmotionTimeChart();
+                    this.createEngagementStressChart();
+                    this.createLocationChart();
+                    this.createVolumeChart();
+                }, 100);
+            }
+
+            createEmotionTimeChart() {
+                const ctx = document.getElementById('emotionTimeChart');
+                if (!ctx) return;
+
+                // Group memories by date and emotion
+                const emotionData = {};
+                const dates = [];
+                
+                this.filteredMemories.forEach(memory => {
+                    const date = new Date(memory.timestamp * 1000).toDateString();
+                    if (!emotionData[date]) {
+                        emotionData[date] = { joy: 0, sadness: 0, anger: 0, fear: 0, surprise: 0, neutral: 0 };
+                        dates.push(date);
+                    }
+                    emotionData[date][memory.emotion]++;
+                });
+
+                dates.sort((a, b) => new Date(a) - new Date(b));
+                const last7Days = dates.slice(-7);
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: last7Days.map(date => new Date(date).toLocaleDateString()),
+                        datasets: [
+                            {
+                                label: 'Joy',
+                                data: last7Days.map(date => emotionData[date]?.joy || 0),
+                                borderColor: '#ffffff',
+                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Sadness',
+                                data: last7Days.map(date => emotionData[date]?.sadness || 0),
+                                borderColor: '#cccccc',
+                                backgroundColor: 'rgba(204, 204, 204, 0.1)',
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#ffffff' }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#cccccc' } },
+                            y: { ticks: { color: '#cccccc' } }
+                        }
+                    }
+                });
+            }
+
+            createEngagementStressChart() {
+                const ctx = document.getElementById('engagementStressChart');
+                if (!ctx) return;
+
+                const data = this.filteredMemories.map(memory => ({
+                    x: memory.context_data.biometric.stress_score * 100,
+                    y: memory.movement_data.engagement_level * 100,
+                    emotion: memory.emotion
+                }));
+
+                new Chart(ctx, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [{
+                            label: 'Memories',
+                            data: data,
+                            backgroundColor: '#ffffff',
+                            borderColor: '#cccccc'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#ffffff' }
+                            }
+                        },
+                        scales: {
+                            x: { 
+                                title: { display: true, text: 'Stress Level (%)', color: '#ffffff' },
+                                ticks: { color: '#cccccc' }
+                            },
+                            y: { 
+                                title: { display: true, text: 'Engagement Level (%)', color: '#ffffff' },
+                                ticks: { color: '#cccccc' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            createLocationChart() {
+                const ctx = document.getElementById('locationChart');
+                if (!ctx) return;
+
+                const locationCounts = {};
+                this.filteredMemories.forEach(memory => {
+                    const location = memory.context_data.environmental.venue_type;
+                    locationCounts[location] = (locationCounts[location] || 0) + 1;
+                });
+
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(locationCounts),
+                        datasets: [{
+                            data: Object.values(locationCounts),
+                            backgroundColor: ['#ffffff', '#cccccc', '#999999', '#666666', '#333333']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#ffffff' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            createVolumeChart() {
+                const ctx = document.getElementById('volumeChart');
+                if (!ctx) return;
+
+                const volumeData = {};
+                this.filteredMemories.forEach(memory => {
+                    const date = new Date(memory.timestamp * 1000).toDateString();
+                    volumeData[date] = (volumeData[date] || 0) + 1;
+                });
+
+                const dates = Object.keys(volumeData).sort((a, b) => new Date(a) - new Date(b)).slice(-14);
+
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: dates.map(date => new Date(date).toLocaleDateString()),
+                        datasets: [{
+                            label: 'Memories Created',
+                            data: dates.map(date => volumeData[date] || 0),
+                            backgroundColor: '#ffffff',
+                            borderColor: '#cccccc'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#ffffff' }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#cccccc' } },
+                            y: { ticks: { color: '#cccccc' } }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Initialize the memory explorer
+        let explorer;
+        document.addEventListener('DOMContentLoaded', () => {
+            explorer = new MemoryExplorer();
+        });
+    </script>
+</body>
+</html>

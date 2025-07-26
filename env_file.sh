@@ -1,0 +1,33 @@
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+DEBUG=True
+
+# Database
+DATABASE_PATH=./memory_system.db
+
+# OpenAI Integration (Optional)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Model Configuration
+WHISPER_MODEL=base
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+EMOTION_MODEL=j-hartmann/emotion-english-distilroberta-base
+
+# Camera/Video Settings
+ENABLE_CAMERA=True
+CAMERA_DEVICE=0
+VIDEO_WIDTH=640
+VIDEO_HEIGHT=480
+
+# Audio Settings
+AUDIO_SAMPLE_RATE=16000
+AUDIO_CHUNK_SIZE=1024
+
+# Storage Settings
+MAX_MEMORY_SIZE_MB=1000
+AUTO_CLEANUP_DAYS=365
+
+# Security
+CORS_ORIGINS=["http://localhost:3000", "http://localhost:3001"]
+MAX_FILE_SIZE_MB=100
