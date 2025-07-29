@@ -1,4 +1,7 @@
+
 # Memori: Intelligent Audio Memory System
+
+> **Note:** This project is part of a master's thesis at Harvard MDE (Master in Design Engineering).
 
 <div align="center">
 
