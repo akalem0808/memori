@@ -1,4 +1,3 @@
-
 # Memori: Intelligent Audio Memory System
 
 > **Note:** This project is part of a master's thesis at Harvard MDE (Master in Design Engineering).
@@ -13,258 +12,132 @@
 
 </div>
 
-##  Overview
+## Overview
 
-Memori is a cutting-edge audio memory system that transforms how you interact with audio content. Using state-of-the-art AI technologies, it transcribes speech, analyzes emotions, extracts insights, and creates a searchable knowledge base from your audio memories.
+**Memori** is an AI-powered audio memory system that transforms spoken conversations into searchable, data-rich memories. Developed as part of a Master’s thesis at Harvard MDE, it captures real-time audio, transcribes it with high accuracy, analyzes emotional and non-verbal cues, and stores everything in a vector database for intuitive retrieval and exploration.
 
-### Key Features
+## Key Features
 
-- **AI Audio Transcription**: Powered by OpenAI Whisper for accurate speech-to-text
-- **Intelligent Memory Storage**: ChromaDB vector database for efficient retrieval
-- **Smart Contextual Search**: AI-powered search across all stored memories
-- **Vector Search**: Semantic similarity search across all memories
-- **Real-time Processing**: Live audio stream processing and analysis
-- **Rich Analytics**: Comprehensive insights and visualizations
-- **Secure Authentication**: JWT-based user authentication system
-- **Responsive Design**: Works seamlessly on desktop and mobile
-- **Body Language Analysis**: MediaPipe integration for gesture recognition
+- **High-Accuracy Transcription**  
+  Utilizes OpenAI’s Whisper model for precise, real-time speech-to-text.
 
-## Architecture
+- **Semantic Search**  
+  Embeds transcripts with SentenceTransformers and stores embeddings in ChromaDB for vector-based similarity and semantic queries.
 
-## Architecture
+- **Multimodal Emotion Analysis**  
+  Leverages BERTopic to extract emotional tone from speech and MediaPipe to analyze body language, enriching each memory with contextual metadata.
 
-### Backend (Python + FastAPI)
-- **FastAPI**: Modern, fast web framework with automatic API documentation
-- **Whisper**: OpenAI's robust speech recognition model
-- **SentenceTransformers**: Semantic embeddings for similarity search
-- **BERTopic**: Advanced topic modeling and clustering
-- **ChromaDB**: Vector database for efficient similarity search
-- **Pydantic**: Type-safe data validation and serialization
+- **Real-Time Processing**  
+  Streams audio, transcribes, analyzes, and visualizes results instantly for seamless user interaction.
 
-### Frontend (HTML + JavaScript)
-- **Vanilla JavaScript**: Lightweight, fast, and responsive
-- **MediaPipe**: Real-time body language and gesture analysis
-- **Chart.js**: Interactive data visualizations
-- **Tailwind CSS**: Modern utility-first CSS framework
-- **WebRTC**: Browser-based audio/video capture
+- **Interactive Analytics**  
+  Generates dynamic charts and insights via Chart.js to help users explore patterns and sentiments in their conversations.
 
-## Quick Start
+## Tech Stack
 
-### Prerequisites
-- **Python 3.9+** for backend
-- **Modern browser** with WebRTC support for frontend
-- **Git** for version control
+- **Backend:** FastAPI (Python) with JWT-based authentication for secure API endpoints and task orchestration.
+- **Frontend:** Vanilla JavaScript, Tailwind CSS, WebRTC for audio capture, and Chart.js for visualizations.
+- **AI Models:** Whisper (speech recognition), SentenceTransformers (embeddings), BERTopic (topic & sentiment clustering), MediaPipe (body language/gesture detection), ChromaDB (vector storage).
+- **Deployment:** Docker & Docker Compose for portable, cloud- or on-premises deployments (AWS, GCP, Azure).
 
-### ️ Installation
+## Innovation
 
-#### 1. Clone Repository
-```bash
-git clone https://github.com/akalem0808/memori.git
-cd memori
+Memori pioneers a unified, multimodal AI approach by combining audio transcription, emotion analysis, and non-verbal behavior detection into a single system. Its vector-based search enables natural-language and similarity-driven memory retrieval, a capability rare in personal or research-oriented audio platforms.
+
+## Use Cases
+
+- **Personal Journaling:** Capture and reflect on daily conversations, extracting emotional and contextual insights.
+- **Research:** Analyze spoken and non-verbal data for sociolinguistics, psychology, or human-computer interaction studies.
+- **Creative & Therapeutic Apps:** Build interactive storytelling experiences or therapeutic tools that respond to users’ emotional and behavioral cues.
+
+## Architecture Overview
+
+```mermaid
+flowchart LR
+  A[Browser/WebRTC] -->|Audio Stream| B[FastAPI Server]
+  B --> C[Whisper Transcription]
+  B --> D[BERTopic Sentiment]
+  B --> E[MediaPipe Analysis]
+  C --> F[SentenceTransformer Embeddings]
+  F --> G[ChromaDB Vector Store]
+  H[Frontend UI] -->|API Calls| B
+  H -->|Visualization| I[Chart.js]
 ```
 
-#### 2. Backend Setup
-```bash
-# Create and activate virtual environment
-python -m venv memori
-source memori/bin/activate  # On Windows: memori\Scripts\activate
+## Getting Started
 
-# Navigate to backend
-cd backend
+1. **Clone the Repository**
 
-# Install dependencies
-pip install -r requirements.txt
+   ```bash
+   git clone https://github.com/akalem0808/memori.git
+   cd memori
+   ```
+2. **Configure Environment**  
+   Copy `.env.example` to `.env` and set `SECRET_KEY`, `DATABASE_URL`, and `ALLOWED_ORIGINS`.
+3. **Build & Run**
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your configuration
+   ```bash
+   docker-compose up --build
+   ```
+4. **Access**
 
-# Run the FastAPI server
-uvicorn memory_api:app --reload --host 0.0.0.0 --port 8000
-```
+   - Frontend: [http://localhost:8080](http://localhost:8080)
+   - API: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-#### 3. Frontend Setup
-```bash
-# Start a simple HTTP server for frontend
-cd ..  # Back to root directory
-python -m http.server 8080
+## API Reference
 
-# Open browser to:
-# http://localhost:8080/memori.html
-# http://localhost:8080/memory_viewer_interface.html
-```
+| Endpoint             | Method | Description                                     |
+|----------------------|--------|-------------------------------------------------|
+| /auth/login          | POST   | Obtain JWT token                                |
+| /memories/audio      | POST   | Upload raw audio for transcription and analysis |
+| /memories            | GET    | Retrieve transcription results                  |
+| /memories/search     | POST   | Perform semantic search over stored memories    |
+| /analytics           | GET    | Fetch sentiment and analysis data               |
 
-###  Docker Setup (Alternative)
-```bash
-# Build and run with Docker
-docker build -t memori-backend ./backend
-docker run -p 8000:8000 memori-backend
+## Roadmap & Future Work
 
-# Frontend can be served statically
-docker run -p 8080:80 -v $(pwd):/usr/share/nginx/html nginx
-```
+- **v0.2:** Multi-speaker diarization, custom emotion models
+- **v1.0:** Native mobile app, plugin architecture for custom AI modules
+- **Long Term:** Real-time group meeting summaries, calendar/task integration
 
-## API Documentation
+## Contribution Guidelines
 
-Once the backend is running, access the interactive API documentation:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **OpenAPI Schema**: http://localhost:8000/openapi.json
+- Fork the repo and create feature branches named `feature/your-feature`.
+- Write tests with pytest and ensure coverage.
+- Run code style checks: `black . && flake8`.
+- Submit pull requests against the `main` branch referencing issues.
 
-###  Key Endpoints
+## Testing & CI/CD
 
-- `POST /memories/audio` - Upload and transcribe audio files
-- `GET /memories` - Retrieve all memories with filtering
-- `POST /memories/search` - Semantic search across memories
-- `GET /analytics` - Get analytics and insights
-- `GET /health` - System health check
+- **Tests:** `pytest --cov=app`
+- **Linting:** `flake8`
+- **CI:** GitHub Actions runs tests and builds Docker images on PRs.
 
-## Testing & Quality Assurance
+## Privacy & Security
 
-**Production Ready**: Comprehensive testing completed with high success rates.
+- **JWT Authentication** for all API calls.
+- **CORS Restrictions** limit allowed origins.
+- **Input Validation** with Pydantic prevents injection.
+- **Rate Limiting** protects against abuse.
 
-### Backend Testing
-- **Implementation Score**: 88.6% (78/88 checks passed)
-- API endpoints validation
-- Audio transcription testing
-- Database operations verification
-- Authentication flow testing
-- File upload validation
-- Error handling verification
-- Security measures validation
+## Limitations & Known Issues
 
-## Project Structure
+- Maximum audio clip length: 5 minutes.
+- Emotion analysis may misclassify subtle tones.
+- Large-scale deployments might require database sharding.
 
-```
-memori/
-├── backend/                 # Python FastAPI backend
-│   ├── memory_api.py       # Main FastAPI application
-│   ├── audio_memory_assistant.py  # Audio processing logic
-│   ├── memory_utils.py     # Utility functions
-│   ├── memory_model.py     # Data models
-│   ├── advanced_features.py # Real-time processing
-│   ├── memory_insights.py  # Analytics engine
-│   ├── auth.py            # Authentication logic
-│   ├── requirements.txt   # Python dependencies
-│   └── tests/            # Backend tests
-├── frontend/               # React frontend (optional)
-│   ├── src/
-│   ├── package.json
-│   └── ...
-├── memori.html            # Main application interface
-├── memory_viewer_interface.html  # Memory exploration interface
-├── README.md              # This file
-├── .gitignore            # Git ignore rules
-└── .env.example          # Environment variables template
-```
+## Acknowledgments & Credits
 
-## Configuration
+- Inspiration: Memex, Otter.ai
 
-### Environment Variables
-Create a `.env` file in the backend directory:
+## Community & Support
 
-```env
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-DEBUG=true
-
-# Security
-SECRET_KEY=your-secret-key-here
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
-
-# File Upload Limits
-MAX_FILE_SIZE=50000000  # 50MB
-UPLOAD_CHUNK_SIZE=8192
-
-# Rate Limiting
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW=60
-
-# Database
-DATABASE_URL=sqlite:///memories.db
-```
-
-## Security Features
-
-- **JWT Authentication**: Secure token-based authentication
-- **CORS Protection**: Configurable cross-origin request handling
-- **File Upload Validation**: Type and size restrictions
-- **Input Sanitization**: XSS and injection prevention
-- **Rate Limiting**: Protection against abuse
-- **Secure Headers**: Additional security middleware
-
-## Production Deployment
-
-### Backend Deployment
-```bash
-# Install production dependencies
-pip install -r requirements.txt
-
-# Run with Gunicorn
-gunicorn memory_api:app -w 4 -k uvicorn.workers.UvicornWorker
-
-# Or use Docker
-docker build -t memori-prod ./backend
-docker run -p 8000:8000 memori-prod
-```
-
-### Frontend Deployment
-```bash
-# Serve static files with nginx or any web server
-nginx -s reload
-```
-
-## Performance Metrics
-
-- **Audio Processing**: < 2s for 1-minute audio files
-- **Memory Search**: < 100ms for semantic queries
-- **API Response**: < 50ms average response time
-- **Concurrent Users**: Supports 100+ concurrent connections
-- **Storage**: Efficient vector storage with ChromaDB
-
-##  Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
-
-### Development Workflow
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
-
-### Code Standards
-- Python: Follow PEP 8 style guide
-- JavaScript: Use ESLint configuration
-- Documentation: Update README for new features
-- Testing: Maintain test coverage above 80%
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-##  Acknowledgments
-
-- **OpenAI Whisper** for speech recognition
-- **Hugging Face** for transformer models
-- **ChromaDB** for vector database
-- **FastAPI** for the excellent web framework
-- **MediaPipe** for body language analysis
-
-##  Support
-
-For support and questions:
-- Create an [Issue](https://github.com/akalem0808/memori/issues)
-- Check our [Documentation](./docs/)
-- Review [Testing Reports](./BACKEND_TESTING_COMPLETE.md)
+- **Discussions:** GitHub Discussions
+- **Chat:** Slack (link in README)
+- **Issues:** GitHub Issues
 
 ---
 
-<div align="center">
+**License:** MIT
 
-**Built with ️ for better audio memory management**
-
-[Home](/) | [Docs](./docs/) | [Tests](./docs/BACKEND_TESTING_COMPLETE.md) | [Deploy](./deployment/)
-
-</div>
+*Memori is open for collaboration—your contributions and feedback are welcome!*
