@@ -1,378 +1,570 @@
-# Memory Insights Engine - Advanced implementation
+# Advanced Memory Insights Engine with Configuration Constants
+import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-import numpy as np
-from collections import Counter
-from memory_model import Memory
-import logging
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+import statistics
 
+# Configure logging
 logger = logging.getLogger(__name__)
 
+# Configuration constants replacing magic numbers
+INSIGHTS_CONFIG = {
+    'HIGH_ACTIVITY_THRESHOLD': 10,           # memories per day
+    'LOW_ACTIVITY_THRESHOLD': 2,             # memories per day  
+    'HIGH_IMPORTANCE_THRESHOLD': 0.8,        # importance score
+    'MEDIUM_IMPORTANCE_THRESHOLD': 0.5,      # importance score
+    'EMOTION_PATTERN_MIN_CONFIDENCE': 0.7,   # minimum confidence for pattern detection
+    'TOPIC_CLUSTERING_MIN_SIZE': 3,          # minimum cluster size for topics
+    'TREND_ANALYSIS_DAYS': 7,                # days for trend analysis
+    'INSIGHT_CONFIDENCE_THRESHOLD': 0.6,     # minimum confidence for insights
+    'MAX_INSIGHTS_PER_CATEGORY': 5,          # maximum insights per category
+    'MEMORY_FRESHNESS_DAYS': 30,             # days for considering memories fresh
+    'PATTERN_SIGNIFICANCE_THRESHOLD': 0.05,  # statistical significance threshold
+    'MIN_SAMPLE_SIZE': 5,                    # minimum sample size for statistics
+    'OUTLIER_DETECTION_THRESHOLD': 2.0,      # standard deviations for outlier detection
+    'CORRELATION_THRESHOLD': 0.3,            # minimum correlation for relationships
+    'FREQUENCY_THRESHOLD': 0.1               # minimum frequency for pattern recognition
+}
+
+@dataclass
+class Insight:
+    """Structured insight with confidence scoring"""
+    type: str
+    message: str
+    confidence: float
+    data: Dict[str, Any]
+    timestamp: datetime = None
+    
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now()
+
 class InsightEngine:
-    """Advanced engine for generating insights from memory patterns"""
+    """Advanced analytics engine for generating insights from memory patterns"""
     
-    def __init__(self):
-        """Initialize the insight engine"""
-        self.insight_generators = [
-            self._check_emotion_patterns,
-            self._check_topic_patterns,
-            self._check_time_patterns,
-            self._check_significance_patterns,
-            self._check_memory_gaps
-        ]
+    def __init__(self, memory_processor):
+        self.memory_processor = memory_processor
+        self.config = INSIGHTS_CONFIG
+        logger.info("Insight engine initialized with configuration")
     
-    def generate_insights(self, memories: List[Memory], user_preferences: Optional[Dict] = None) -> List[Dict]:
-        """Generate insights from a list of memories"""
-        if not memories:
+    def generate_insights(self, memories: List[Dict[str, Any]]) -> List[Insight]:
+        """Generate comprehensive insights from memory data"""
+        if not memories or len(memories) < self.config['MIN_SAMPLE_SIZE']:
+            logger.warning("Insufficient memory data for insight generation")
             return []
-            
+        
         insights = []
         
-        # Run all insight generators
-        for generator in self.insight_generators:
-            try:
-                new_insights = generator(memories, user_preferences)
-                if new_insights:
-                    insights.extend(new_insights)
-            except Exception as e:
-                logger.error(f"Error in insight generator {generator.__name__}: {e}")
-        
-        # Sort by importance and confidence
-        insights.sort(key=lambda x: (
-            self._importance_to_value(x.get('importance', 'low')),
-            x.get('confidence', 0)
-        ), reverse=True)
-        
-        return insights
-    
-    def _importance_to_value(self, importance: str) -> int:
-        """Convert importance string to numeric value for sorting"""
-        values = {
-            'critical': 4,
-            'high': 3, 
-            'medium': 2, 
-            'low': 1
-        }
-        return values.get(importance.lower(), 0)
-    
-    def _check_emotion_patterns(self, memories: List[Memory], user_preferences: Optional[Dict] = None) -> List[Dict]:
-        """Check for patterns in emotional states"""
-        insights = []
-        
-        # Skip if too few memories
-        if len(memories) < 3:
-            return insights
+        try:
+            # Generate different types of insights with error handling
+            insights.extend(self._analyze_activity_patterns(memories))
+            insights.extend(self._analyze_emotion_trends(memories))
+            insights.extend(self._analyze_importance_distribution(memories))
+            insights.extend(self._analyze_topic_clustering(memories))
+            insights.extend(self._analyze_temporal_patterns(memories))
+            insights.extend(self._analyze_content_patterns(memories))
             
-        # Sort by timestamp
-        sorted_memories = sorted(memories, key=lambda m: m.timestamp)
-        
-        # Check for consistent emotions
-        emotions = [m.emotion for m in sorted_memories[-5:] if m.emotion]
-        if len(emotions) >= 3:
-            emotion_counts = Counter(emotions)
-            most_common = emotion_counts.most_common(1)[0]
-            
-            # If same emotion appears frequently
-            if most_common[1] >= 3 and most_common[1] / len(emotions) >= 0.6:
-                insights.append({
-                    'insight_type': 'pattern',
-                    'title': f"Consistent {most_common[0]} detected",
-                    'description': f"Your recent memories show consistent {most_common[0]} emotion.",
-                    'confidence': 0.7 + (most_common[1] / len(emotions) * 0.3),  # Higher confidence with more matches
-                    'importance': 'medium',
-                    'suggested_actions': [
-                        'Review related memories',
-                        'Reflect on current emotional state'
-                    ],
-                    'data_points': [
-                        {'id': m.id, 'text': m.text[:50], 'timestamp': m.timestamp.isoformat()}
-                        for m in sorted_memories[-5:] if m.emotion == most_common[0]
-                    ]
-                })
-        
-        # Check for emotional shifts
-        if len(emotions) >= 4:
-            # Check if emotions shifted from one to another
-            first_half = emotions[:len(emotions)//2]
-            second_half = emotions[len(emotions)//2:]
-            
-            first_common = Counter(first_half).most_common(1)[0][0] if first_half else None
-            second_common = Counter(second_half).most_common(1)[0][0] if second_half else None
-            
-            if first_common and second_common and first_common != second_common:
-                insights.append({
-                    'insight_type': 'shift',
-                    'title': f"Emotional shift detected",
-                    'description': f"Your emotions appear to have shifted from {first_common} to {second_common}.",
-                    'confidence': 0.65,
-                    'importance': 'medium',
-                    'suggested_actions': [
-                        'Compare earlier and recent memories',
-                        'Reflect on recent life changes'
-                    ],
-                    'data_points': [
-                        {'id': m.id, 'emotion': m.emotion, 'timestamp': m.timestamp.isoformat()}
-                        for m in sorted_memories[-6:]
-                    ]
-                })
-                
-        return insights
-    
-    def _check_topic_patterns(self, memories: List[Memory], user_preferences: Optional[Dict] = None) -> List[Dict]:
-        """Check for patterns in memory topics"""
-        insights = []
-        
-        # Get memories with topics
-        memories_with_topics = [m for m in memories if m.topics and len(m.topics) > 0]
-        
-        # Skip if too few memories with topics
-        if len(memories_with_topics) < 3:
-            return insights
-            
-        # Extract all topics
-        all_topics = []
-        for memory in memories_with_topics:
-            all_topics.extend(memory.topics)
-            
-        # Find most common topics
-        topic_counts = Counter(all_topics).most_common(3)
-        
-        # If a topic appears frequently
-        if topic_counts and topic_counts[0][1] >= 3:
-            dominant_topic = topic_counts[0][0]
-            related_memories = [m for m in memories_with_topics if dominant_topic in m.topics]
-            
-            insights.append({
-                'insight_type': 'topic_focus',
-                'title': f"Frequent topic: {dominant_topic}",
-                'description': f"This topic appears in {topic_counts[0][1]} of your recent memories.",
-                'confidence': 0.8,
-                'importance': 'medium',
-                'suggested_actions': [
-                    'Explore memories with this topic',
-                    'Reflect on why this topic is recurring'
-                ],
-                'data_points': [
-                    {'id': m.id, 'text': m.text[:50], 'timestamp': m.timestamp.isoformat()}
-                    for m in related_memories[:5]
-                ]
-            })
-            
-        # Check for topic co-occurrence
-        if len(topic_counts) >= 2:
-            # Find memories that contain both top topics
-            top_topics = [t[0] for t in topic_counts[:2]]
-            co_occurring_memories = [
-                m for m in memories_with_topics 
-                if top_topics[0] in m.topics and top_topics[1] in m.topics
+            # Filter by confidence threshold and limit results
+            high_confidence_insights = [
+                insight for insight in insights 
+                if insight.confidence >= self.config['INSIGHT_CONFIDENCE_THRESHOLD']
             ]
             
-            if len(co_occurring_memories) >= 2:
-                insights.append({
-                    'insight_type': 'topic_connection',
-                    'title': f"Connected topics: {top_topics[0]} and {top_topics[1]}",
-                    'description': f"These topics frequently appear together in your memories.",
-                    'confidence': 0.7,
-                    'importance': 'low',
-                    'suggested_actions': [
-                        'Explore the connection between these topics',
-                        'Review memories containing both topics'
-                    ],
-                    'data_points': [
-                        {'id': m.id, 'text': m.text[:50], 'timestamp': m.timestamp.isoformat()}
-                        for m in co_occurring_memories[:3]
-                    ]
-                })
+            # Group by type and limit each category
+            insights_by_type = defaultdict(list)
+            for insight in high_confidence_insights:
+                insights_by_type[insight.type].append(insight)
+            
+            final_insights = []
+            for insight_type, type_insights in insights_by_type.items():
+                # Sort by confidence and take top N
+                sorted_insights = sorted(type_insights, key=lambda x: x.confidence, reverse=True)
+                final_insights.extend(sorted_insights[:self.config['MAX_INSIGHTS_PER_CATEGORY']])
+            
+            logger.info("Generated %d insights from %d memories", len(final_insights), len(memories))
+            return final_insights
+            
+        except Exception as e:
+            logger.error("Error generating insights: %s", e)
+            return []
+    
+    def _analyze_activity_patterns(self, memories: List[Dict[str, Any]]) -> List[Insight]:
+        """Analyze memory creation patterns and activity levels"""
+        insights = []
+        
+        try:
+            # Calculate daily activity
+            daily_counts = defaultdict(int)
+            for memory in memories:
+                try:
+                    if isinstance(memory.get('timestamp'), (int, float)):
+                        date = datetime.fromtimestamp(memory['timestamp']).date()
+                    elif isinstance(memory.get('timestamp'), str):
+                        date = datetime.fromisoformat(memory['timestamp']).date()
+                    else:
+                        continue
+                    daily_counts[date] += 1
+                except (ValueError, TypeError, KeyError):
+                    continue
+            
+            if not daily_counts:
+                return insights
+            
+            avg_daily_activity = statistics.mean(daily_counts.values())
+            
+            # High activity detection
+            if avg_daily_activity > self.config['HIGH_ACTIVITY_THRESHOLD']:
+                insights.append(Insight(
+                    type="activity_pattern",
+                    message=f"High memory activity detected: averaging {avg_daily_activity:.1f} memories per day",
+                    confidence=min(0.9, avg_daily_activity / 20),
+                    data={"average_daily": avg_daily_activity, "threshold": self.config['HIGH_ACTIVITY_THRESHOLD']}
+                ))
+            
+            # Low activity warning
+            elif avg_daily_activity < self.config['LOW_ACTIVITY_THRESHOLD']:
+                insights.append(Insight(
+                    type="activity_pattern", 
+                    message=f"Low memory activity: only {avg_daily_activity:.1f} memories per day on average",
+                    confidence=0.8,
+                    data={"average_daily": avg_daily_activity, "threshold": self.config['LOW_ACTIVITY_THRESHOLD']}
+                ))
+            
+            # Activity trend analysis
+            recent_days = list(daily_counts.values())[-self.config['TREND_ANALYSIS_DAYS']:]
+            if len(recent_days) >= 3:
+                trend_slope = self._calculate_trend(recent_days)
+                if trend_slope > 0.2:
+                    insights.append(Insight(
+                        type="activity_trend",
+                        message="Memory creation is trending upward",
+                        confidence=min(0.9, abs(trend_slope) * 2),
+                        data={"trend_slope": trend_slope, "recent_days": len(recent_days)}
+                    ))
+                elif trend_slope < -0.2:
+                    insights.append(Insight(
+                        type="activity_trend",
+                        message="Memory creation is trending downward",
+                        confidence=min(0.9, abs(trend_slope) * 2),
+                        data={"trend_slope": trend_slope, "recent_days": len(recent_days)}
+                    ))
+            
+        except Exception as e:
+            logger.error("Error in activity pattern analysis: %s", e)
         
         return insights
     
-    def _check_time_patterns(self, memories: List[Memory], user_preferences: Optional[Dict] = None) -> List[Dict]:
-        """Check for patterns in memory timing"""
+    def _analyze_emotion_trends(self, memories: List[Dict[str, Any]]) -> List[Insight]:
+        """Analyze emotional patterns and trends in memories"""
         insights = []
         
-        # Skip if too few memories
-        if len(memories) < 5:
-            return insights
+        try:
+            emotion_counts = Counter()
+            recent_emotions = []
             
-        # Sort by timestamp
-        sorted_memories = sorted(memories, key=lambda m: m.timestamp)
+            cutoff_date = datetime.now() - timedelta(days=self.config['TREND_ANALYSIS_DAYS'])
+            
+            for memory in memories:
+                emotion = memory.get('emotion', 'neutral')
+                emotion_counts[emotion] += 1
+                
+                # Track recent emotions for trend analysis
+                try:
+                    if isinstance(memory.get('timestamp'), (int, float)):
+                        mem_date = datetime.fromtimestamp(memory['timestamp'])
+                    elif isinstance(memory.get('timestamp'), str):
+                        mem_date = datetime.fromisoformat(memory['timestamp'])
+                    else:
+                        continue
+                        
+                    if mem_date >= cutoff_date:
+                        recent_emotions.append(emotion)
+                except (ValueError, TypeError, KeyError):
+                    continue
+            
+            if not emotion_counts:
+                return insights
+            
+            total_memories = sum(emotion_counts.values())
+            
+            # Dominant emotion detection
+            most_common_emotion, count = emotion_counts.most_common(1)[0]
+            emotion_percentage = count / total_memories
+            
+            if emotion_percentage > self.config['FREQUENCY_THRESHOLD'] * 5:  # 50% threshold
+                confidence = min(0.9, emotion_percentage * 1.5)
+                insights.append(Insight(
+                    type="emotion_pattern",
+                    message=f"Dominant emotion pattern detected: {most_common_emotion} ({emotion_percentage:.1%} of memories)",
+                    confidence=confidence,
+                    data={"emotion": most_common_emotion, "percentage": emotion_percentage}
+                ))
+            
+            # Recent emotion trend
+            if recent_emotions:
+                recent_emotion_counts = Counter(recent_emotions)
+                if len(recent_emotion_counts) > 0:
+                    recent_dominant = recent_emotion_counts.most_common(1)[0][0]
+                    if recent_dominant != most_common_emotion:
+                        insights.append(Insight(
+                            type="emotion_trend",
+                            message=f"Recent emotional shift detected: trending toward {recent_dominant}",
+                            confidence=self.config['EMOTION_PATTERN_MIN_CONFIDENCE'],
+                            data={"recent_emotion": recent_dominant, "overall_emotion": most_common_emotion}
+                        ))
+            
+            # Emotional diversity
+            emotion_diversity = len(emotion_counts) / max(1, len(memories))
+            if emotion_diversity > 0.3:
+                insights.append(Insight(
+                    type="emotion_pattern",
+                    message=f"High emotional diversity detected across {len(emotion_counts)} different emotions",
+                    confidence=min(0.9, emotion_diversity * 2),
+                    data={"diversity_score": emotion_diversity, "unique_emotions": len(emotion_counts)}
+                ))
+            
+        except Exception as e:
+            logger.error("Error in emotion trend analysis: %s", e)
         
-        # Extract hours of day
-        hours = [m.timestamp.hour for m in sorted_memories if hasattr(m.timestamp, 'hour')]
+        return insights
+    
+    def _analyze_importance_distribution(self, memories: List[Dict[str, Any]]) -> List[Insight]:
+        """Analyze the distribution of memory importance scores"""
+        insights = []
         
-        if len(hours) >= 5:
-            hour_counts = Counter(hours)
+        try:
+            importance_scores = []
+            for memory in memories:
+                score = memory.get('importance_score') or memory.get('importance', 0)
+                if isinstance(score, (int, float)) and 0 <= score <= 1:
+                    importance_scores.append(score)
             
-            # Check for time of day patterns
-            morning_count = sum(hour_counts.get(h, 0) for h in range(5, 12))
-            afternoon_count = sum(hour_counts.get(h, 0) for h in range(12, 18))
-            evening_count = sum(hour_counts.get(h, 0) for h in range(18, 24))
-            night_count = sum(hour_counts.get(h, 0) for h in range(0, 5))
+            if len(importance_scores) < self.config['MIN_SAMPLE_SIZE']:
+                return insights
             
-            time_counts = [
-                ("morning", morning_count),
-                ("afternoon", afternoon_count),
-                ("evening", evening_count),
-                ("night", night_count)
+            avg_importance = statistics.mean(importance_scores)
+            
+            # High importance trend
+            high_importance_count = sum(1 for score in importance_scores 
+                                      if score >= self.config['HIGH_IMPORTANCE_THRESHOLD'])
+            high_importance_ratio = high_importance_count / len(importance_scores)
+            
+            if high_importance_ratio > 0.3:
+                insights.append(Insight(
+                    type="importance_pattern",
+                    message=f"High proportion of important memories: {high_importance_ratio:.1%} are highly important",
+                    confidence=min(0.9, high_importance_ratio * 2),
+                    data={"high_importance_ratio": high_importance_ratio, "threshold": self.config['HIGH_IMPORTANCE_THRESHOLD']}
+                ))
+            
+            # Low importance warning
+            low_importance_count = sum(1 for score in importance_scores 
+                                     if score < self.config['MEDIUM_IMPORTANCE_THRESHOLD'])
+            low_importance_ratio = low_importance_count / len(importance_scores)
+            
+            if low_importance_ratio > 0.7:
+                insights.append(Insight(
+                    type="importance_pattern",
+                    message=f"Many memories have low importance scores: {low_importance_ratio:.1%} below medium threshold",
+                    confidence=0.8,
+                    data={"low_importance_ratio": low_importance_ratio, "threshold": self.config['MEDIUM_IMPORTANCE_THRESHOLD']}
+                ))
+            
+            # Importance trend analysis
+            if len(importance_scores) >= self.config['TREND_ANALYSIS_DAYS']:
+                recent_scores = importance_scores[-self.config['TREND_ANALYSIS_DAYS']:]
+                trend_slope = self._calculate_trend(recent_scores)
+                
+                if abs(trend_slope) > 0.05:  # Significant trend
+                    direction = "increasing" if trend_slope > 0 else "decreasing"
+                    insights.append(Insight(
+                        type="importance_trend",
+                        message=f"Memory importance is {direction} over time",
+                        confidence=min(0.9, abs(trend_slope) * 10),
+                        data={"trend_slope": trend_slope, "direction": direction}
+                    ))
+            
+        except Exception as e:
+            logger.error("Error in importance distribution analysis: %s", e)
+        
+        return insights
+    
+    def _analyze_topic_clustering(self, memories: List[Dict[str, Any]]) -> List[Insight]:
+        """Analyze topic patterns and clustering in memories"""
+        insights = []
+        
+        try:
+            topic_counts = defaultdict(int)
+            tag_counts = defaultdict(int)
+            
+            for memory in memories:
+                # Analyze topics
+                topics = memory.get('topics', [])
+                if isinstance(topics, list):
+                    for topic in topics:
+                        if isinstance(topic, str) and topic.strip():
+                            topic_counts[topic.strip().lower()] += 1
+                
+                # Analyze tags
+                tags = memory.get('tags', [])
+                if isinstance(tags, str):
+                    try:
+                        import json
+                        tags = json.loads(tags)
+                    except json.JSONDecodeError:
+                        tags = [tags]
+                
+                if isinstance(tags, list):
+                    for tag in tags:
+                        if isinstance(tag, str) and tag.strip():
+                            tag_counts[tag.strip().lower()] += 1
+            
+            # Topic clustering insights
+            if topic_counts:
+                dominant_topics = [topic for topic, count in topic_counts.items() 
+                                 if count >= self.config['TOPIC_CLUSTERING_MIN_SIZE']]
+                
+                if dominant_topics:
+                    top_topic, count = max(topic_counts.items(), key=lambda x: x[1])
+                    topic_ratio = count / len(memories)
+                    
+                    if topic_ratio > 0.2:
+                        insights.append(Insight(
+                            type="topic_pattern",
+                            message=f"Strong focus on '{top_topic}' topic: {count} memories ({topic_ratio:.1%})",
+                            confidence=min(0.9, topic_ratio * 3),
+                            data={"top_topic": top_topic, "count": count, "ratio": topic_ratio}
+                        ))
+            
+            # Tag pattern insights
+            if tag_counts:
+                top_tags = Counter(tag_counts).most_common(3)
+                if top_tags:
+                    most_used_tag, tag_count = top_tags[0]
+                    tag_ratio = tag_count / len(memories)
+                    
+                    if tag_ratio > 0.25:
+                        insights.append(Insight(
+                            type="tag_pattern",
+                            message=f"Frequently used tag: '{most_used_tag}' appears in {tag_ratio:.1%} of memories",
+                            confidence=min(0.9, tag_ratio * 2),
+                            data={"top_tag": most_used_tag, "count": tag_count, "ratio": tag_ratio}
+                        ))
+            
+        except Exception as e:
+            logger.error("Error in topic clustering analysis: %s", e)
+        
+        return insights
+    
+    def _analyze_temporal_patterns(self, memories: List[Dict[str, Any]]) -> List[Insight]:
+        """Analyze temporal patterns in memory creation"""
+        insights = []
+        
+        try:
+            hour_counts = defaultdict(int)
+            day_counts = defaultdict(int)
+            
+            for memory in memories:
+                try:
+                    timestamp = memory.get('timestamp')
+                    if isinstance(timestamp, (int, float)):
+                        dt = datetime.fromtimestamp(timestamp)
+                    elif isinstance(timestamp, str):
+                        dt = datetime.fromisoformat(timestamp)
+                    else:
+                        continue
+                    
+                    hour_counts[dt.hour] += 1
+                    day_counts[dt.strftime('%A')] += 1
+                    
+                except (ValueError, TypeError, KeyError):
+                    continue
+            
+            # Peak hour analysis
+            if hour_counts:
+                peak_hour = max(hour_counts.items(), key=lambda x: x[1])
+                if peak_hour[1] > len(memories) * 0.15:  # 15% of memories in one hour
+                    insights.append(Insight(
+                        type="temporal_pattern",
+                        message=f"Peak memory creation time: {peak_hour[0]:02d}:00 with {peak_hour[1]} memories",
+                        confidence=0.8,
+                        data={"peak_hour": peak_hour[0], "count": peak_hour[1]}
+                    ))
+            
+            # Day pattern analysis
+            if day_counts:
+                peak_day = max(day_counts.items(), key=lambda x: x[1])
+                if peak_day[1] > len(memories) * 0.2:  # 20% of memories on one day
+                    insights.append(Insight(
+                        type="temporal_pattern",
+                        message=f"Most active day: {peak_day[0]} with {peak_day[1]} memories",
+                        confidence=0.8,
+                        data={"peak_day": peak_day[0], "count": peak_day[1]}
+                    ))
+            
+        except Exception as e:
+            logger.error("Error in temporal pattern analysis: %s", e)
+        
+        return insights
+    
+    def _analyze_content_patterns(self, memories: List[Dict[str, Any]]) -> List[Insight]:
+        """Analyze content patterns and characteristics"""
+        insights = []
+        
+        try:
+            content_lengths = []
+            word_counts = []
+            
+            for memory in memories:
+                content = memory.get('text') or memory.get('content', '')
+                if isinstance(content, str):
+                    content_lengths.append(len(content))
+                    word_counts.append(len(content.split()))
+            
+            if not content_lengths:
+                return insights
+            
+            avg_length = statistics.mean(content_lengths)
+            avg_words = statistics.mean(word_counts)
+            
+            # Long content detection
+            if avg_length > 500:
+                insights.append(Insight(
+                    type="content_pattern",
+                    message=f"Detailed memory entries: average {avg_length:.0f} characters per memory",
+                    confidence=min(0.9, avg_length / 1000),
+                    data={"avg_length": avg_length, "avg_words": avg_words}
+                ))
+            
+            # Short content warning
+            elif avg_length < 50:
+                insights.append(Insight(
+                    type="content_pattern",
+                    message=f"Brief memory entries: average only {avg_length:.0f} characters",
+                    confidence=0.8,
+                    data={"avg_length": avg_length, "avg_words": avg_words}
+                ))
+            
+            # Content variability
+            if len(content_lengths) >= self.config['MIN_SAMPLE_SIZE']:
+                length_std = statistics.stdev(content_lengths)
+                variability = length_std / avg_length if avg_length > 0 else 0
+                
+                if variability > 1.0:  # High variability
+                    insights.append(Insight(
+                        type="content_pattern",
+                        message="High variability in memory detail levels",
+                        confidence=min(0.9, variability / 2),
+                        data={"variability": variability, "std_dev": length_std}
+                    ))
+            
+        except Exception as e:
+            logger.error("Error in content pattern analysis: %s", e)
+        
+        return insights
+    
+    def _calculate_trend(self, values: List[float]) -> float:
+        """Calculate trend slope using linear regression"""
+        if len(values) < 2:
+            return 0.0
+        
+        try:
+            n = len(values)
+            x_vals = list(range(n))
+            
+            # Calculate slope using least squares method
+            sum_x = sum(x_vals)
+            sum_y = sum(values)
+            sum_xy = sum(x * y for x, y in zip(x_vals, values))
+            sum_x2 = sum(x * x for x in x_vals)
+            
+            denominator = n * sum_x2 - sum_x * sum_x
+            if denominator == 0:
+                return 0.0
+            
+            slope = (n * sum_xy - sum_x * sum_y) / denominator
+            return slope
+            
+        except (ZeroDivisionError, ValueError):
+            return 0.0
+    
+    def get_memory_stats(self, memories: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Get comprehensive memory statistics"""
+        if not memories:
+            return {}
+        
+        try:
+            stats = {
+                'total_memories': len(memories),
+                'emotions': Counter(memory.get('emotion', 'neutral') for memory in memories),
+                'avg_importance': 0.0,
+                'memory_age_days': 0.0,
+                'content_stats': {}
+            }
+            
+            # Calculate importance statistics
+            importance_scores = [
+                memory.get('importance_score') or memory.get('importance', 0)
+                for memory in memories
+                if isinstance(memory.get('importance_score') or memory.get('importance', 0), (int, float))
             ]
             
-            dominant_time = max(time_counts, key=lambda x: x[1])
+            if importance_scores:
+                stats['avg_importance'] = statistics.mean(importance_scores)
+                stats['importance_distribution'] = {
+                    'high': sum(1 for s in importance_scores if s >= self.config['HIGH_IMPORTANCE_THRESHOLD']),
+                    'medium': sum(1 for s in importance_scores if self.config['MEDIUM_IMPORTANCE_THRESHOLD'] <= s < self.config['HIGH_IMPORTANCE_THRESHOLD']),
+                    'low': sum(1 for s in importance_scores if s < self.config['MEDIUM_IMPORTANCE_THRESHOLD'])
+                }
             
-            # If there's a clear pattern in time of day
-            if dominant_time[1] > len(hours) * 0.5:
-                insights.append({
-                    'insight_type': 'time_pattern',
-                    'title': f"{dominant_time[0].capitalize()} activity pattern",
-                    'description': f"Most of your memories occur during the {dominant_time[0]}.",
-                    'confidence': 0.7,
-                    'importance': 'low',
-                    'suggested_actions': [
-                        'Consider why this time period is significant',
-                        'Explore memories from other times of day'
-                    ]
-                })
-        
-        # Check for memory frequency changes
-        if len(sorted_memories) >= 10:
-            half_point = len(sorted_memories) // 2
-            first_half = sorted_memories[:half_point]
-            second_half = sorted_memories[half_point:]
+            # Calculate content statistics
+            content_lengths = []
+            for memory in memories:
+                content = memory.get('text') or memory.get('content', '')
+                if isinstance(content, str):
+                    content_lengths.append(len(content))
             
-            first_timespan = (first_half[-1].timestamp - first_half[0].timestamp).total_seconds()
-            second_timespan = (second_half[-1].timestamp - second_half[0].timestamp).total_seconds()
+            if content_lengths:
+                stats['content_stats'] = {
+                    'avg_length': statistics.mean(content_lengths),
+                    'total_characters': sum(content_lengths),
+                    'shortest': min(content_lengths),
+                    'longest': max(content_lengths)
+                }
             
-            # Normalize by number of memories
-            first_freq = first_timespan / len(first_half) if first_timespan > 0 else 0
-            second_freq = second_timespan / len(second_half) if second_timespan > 0 else 0
+            # Calculate age statistics
+            ages = []
+            now = datetime.now()
+            for memory in memories:
+                try:
+                    timestamp = memory.get('timestamp')
+                    if isinstance(timestamp, (int, float)):
+                        mem_date = datetime.fromtimestamp(timestamp)
+                    elif isinstance(timestamp, str):
+                        mem_date = datetime.fromisoformat(timestamp)
+                    else:
+                        continue
+                    
+                    age_days = (now - mem_date).days
+                    ages.append(age_days)
+                except (ValueError, TypeError, KeyError):
+                    continue
             
-            # If frequency changed significantly
-            if first_freq > 0 and second_freq > 0 and (first_freq / second_freq > 2 or second_freq / first_freq > 2):
-                change_type = "increased" if second_freq < first_freq else "decreased"
-                
-                insights.append({
-                    'insight_type': 'frequency_change',
-                    'title': f"Memory frequency has {change_type}",
-                    'description': f"You're creating memories at a {change_type} rate recently.",
-                    'confidence': 0.6,
-                    'importance': 'medium',
-                    'suggested_actions': [
-                        'Reflect on recent lifestyle changes',
-                        'Consider what might be affecting your memory recording'
-                    ]
-                })
-        
-        return insights
-    
-    def _check_significance_patterns(self, memories: List[Memory], user_preferences: Optional[Dict] = None) -> List[Dict]:
-        """Check for patterns in memory significance/importance"""
-        insights = []
-        
-        # Get memories with importance scores
-        memories_with_importance = [m for m in memories if m.importance_score is not None]
-        
-        # Skip if too few memories
-        if len(memories_with_importance) < 5:
-            return insights
+            if ages:
+                stats['memory_age_days'] = statistics.mean(ages)
+                stats['age_distribution'] = {
+                    'fresh': sum(1 for age in ages if age <= self.config['MEMORY_FRESHNESS_DAYS']),
+                    'old': sum(1 for age in ages if age > self.config['MEMORY_FRESHNESS_DAYS'])
+                }
             
-        # Sort by timestamp
-        sorted_memories = sorted(memories_with_importance, key=lambda m: m.timestamp)
-        
-        # Calculate average importance
-        importance_scores = [m.importance_score for m in sorted_memories]
-        avg_importance = sum(importance_scores) / len(importance_scores)
-        
-        # Find highly significant memories
-        significant_memories = [m for m in sorted_memories if m.importance_score > 0.7]
-        
-        if len(significant_memories) >= 2:
-            insights.append({
-                'insight_type': 'significant_memories',
-                'title': "Highly significant memories detected",
-                'description': f"You have {len(significant_memories)} memories that stand out as particularly important.",
-                'confidence': 0.75,
-                'importance': 'high',
-                'suggested_actions': [
-                    'Review these significant memories',
-                    'Consider creating a highlight collection'
-                ],
-                'data_points': [
-                    {'id': m.id, 'text': m.text[:50], 'importance': m.importance_score, 'timestamp': m.timestamp.isoformat()}
-                    for m in significant_memories[:3]
-                ]
-            })
+            return stats
             
-        # Check for change in memory significance
-        if len(sorted_memories) >= 10:
-            half_point = len(sorted_memories) // 2
-            first_half = sorted_memories[:half_point]
-            second_half = sorted_memories[half_point:]
-            
-            first_avg = sum(m.importance_score for m in first_half) / len(first_half)
-            second_avg = sum(m.importance_score for m in second_half) / len(second_half)
-            
-            # If significance changed notably
-            if abs(first_avg - second_avg) > 0.2:
-                change_type = "increased" if second_avg > first_avg else "decreased"
-                
-                insights.append({
-                    'insight_type': 'significance_change',
-                    'title': f"Memory significance has {change_type}",
-                    'description': f"Your recent memories have {change_type} in importance.",
-                    'confidence': 0.65,
-                    'importance': 'medium',
-                    'suggested_actions': [
-                        'Reflect on factors affecting memory significance',
-                        'Consider what life changes might be influencing memory importance'
-                    ]
-                })
-        
-        return insights
-    
-    def _check_memory_gaps(self, memories: List[Memory], user_preferences: Optional[Dict] = None) -> List[Dict]:
-        """Identify significant gaps in memory recording"""
-        insights = []
-        
-        # Skip if too few memories
-        if len(memories) < 5:
-            return insights
-            
-        # Sort by timestamp
-        sorted_memories = sorted(memories, key=lambda m: m.timestamp)
-        
-        # Calculate time gaps between consecutive memories
-        gaps = []
-        for i in range(1, len(sorted_memories)):
-            gap = (sorted_memories[i].timestamp - sorted_memories[i-1].timestamp).total_seconds() / 3600  # hours
-            gaps.append((i-1, i, gap))
-            
-        # Calculate average and standard deviation of gaps
-        avg_gap = sum(g[2] for g in gaps) / len(gaps)
-        std_gap = np.std([g[2] for g in gaps])
-        
-        # Find unusual gaps (> 2 standard deviations from mean)
-        unusual_gaps = [g for g in gaps if g[2] > avg_gap + 2 * std_gap and g[2] > 48]  # At least 48 hours
-        
-        if unusual_gaps:
-            # Get the largest gap
-            largest_gap = max(unusual_gaps, key=lambda g: g[2])
-            start_mem = sorted_memories[largest_gap[0]]
-            end_mem = sorted_memories[largest_gap[1]]
-            gap_days = largest_gap[2] / 24  # Convert to days
-            
-            insights.append({
-                'insight_type': 'memory_gap',
-                'title': f"Significant memory gap detected",
-                'description': f"There's a {gap_days:.1f} day gap between memories from {start_mem.timestamp.strftime('%b %d')} to {end_mem.timestamp.strftime('%b %d')}.",
-                'confidence': 0.8,
-                'importance': 'medium' if gap_days > 7 else 'low',
-                'suggested_actions': [
-                    'Reflect on what happened during this period',
-                    'Consider if there are memories you want to record from this time'
-                ],
-                'data_points': [
-                    {'id': start_mem.id, 'text': start_mem.text[:50], 'timestamp': start_mem.timestamp.isoformat()},
-                    {'id': end_mem.id, 'text': end_mem.text[:50], 'timestamp': end_mem.timestamp.isoformat()}
-                ]
-            })
-        
-        return insights
+        except Exception as e:
+            logger.error("Error calculating memory statistics: %s", e)
+            return {'error': str(e)}
+
+def create_insight_engine(memory_processor) -> InsightEngine:
+    """Factory function to create insight engine with proper configuration"""
+    return InsightEngine(memory_processor)

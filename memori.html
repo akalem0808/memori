@@ -790,6 +790,11 @@
                 document.getElementById('stopCameraButton').disabled = true;
 
                 try {
+                    // Check if MediaPipe libraries are loaded
+                    if (typeof Holistic === 'undefined' || typeof Camera === 'undefined') {
+                        throw new Error('MediaPipe libraries not loaded. Please check your internet connection.');
+                    }
+                    
                     // Initialize MediaPipe Holistic
                     this.holistic = new Holistic({
                         locateFile: (file) => {
@@ -985,7 +990,7 @@
                             gesture_type = 'pointing_up';
                         }
                     }
-                    if (rightHandLandmarks && poseLandands && rightHandLandmarks[8] && poseLandmarks[Holistic.POSE_LANDMARKS.RIGHT_SHOULDER]) {
+                    if (rightHandLandmarks && poseLandmarks && rightHandLandmarks[8] && poseLandmarks[Holistic.POSE_LANDMARKS.RIGHT_SHOULDER]) {
                         if (rightHandLandmarks[8].y < poseLandmarks[Holistic.POSE_LANDMARKS.RIGHT_SHOULDER].y - 0.1) {
                             gesture_type = 'pointing_up';
                         }
@@ -1344,16 +1349,24 @@
                 const bodyLanguageSummary = memory.movement_data?.body_language_summary || 'No visual analysis available.';
 
 
+                // Helper function to escape HTML to prevent XSS
+                const escapeHtml = (text) => {
+                    if (!text) return '';
+                    const div = document.createElement('div');
+                    div.textContent = text;
+                    return div.innerHTML;
+                };
+
                 modalBody.innerHTML = `
                     <div style="margin-bottom: 30px;">
                         <h3 style="color: #000000; margin-bottom: 15px;">Memory from ${date.toLocaleString()}</h3>
                         <div class="memory-tags" style="margin-bottom: 20px;">
-                            <span class="emotion-tag">${memory.emotion}</span>
-                            <span class="emotion-tag">${venueType}</span>
-                            <span class="emotion-tag">${gestureType}</span>
+                            <span class="emotion-tag">${escapeHtml(memory.emotion)}</span>
+                            <span class="emotion-tag">${escapeHtml(venueType)}</span>
+                            <span class="emotion-tag">${escapeHtml(gestureType)}</span>
                         </div>
                         <div class="memory-text" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 30px; color: #333333;">
-                            "${memory.text_preview}"
+                            "${escapeHtml(memory.text_preview)}"
                         </div>
                     </div>
 
@@ -1516,8 +1529,12 @@
                 // MediaPipe DrawingUtils expects landmarks in a specific format
                 // Need to convert simplified landmarks back to objects with x, y, z properties
                 const convertToDrawingLandmarks = (simplified) => {
-                    if (!simplified) return null;
-                    return simplified.map(l => new DrawingUtils.Point(l.x, l.y, l.z));
+                    if (!simplified || !Array.isArray(simplified)) return null;
+                    return simplified.map(l => ({
+                        x: l.x || 0,
+                        y: l.y || 0, 
+                        z: l.z || 0
+                    }));
                 };
 
                 const pose = convertToDrawingLandmarks(frame.pose);
@@ -1525,15 +1542,27 @@
                 const leftHand = convertToDrawingLandmarks(frame.leftHand);
                 const rightHand = convertToDrawingLandmarks(frame.rightHand);
 
-                // Draw landmarks
-                DrawingUtils.drawConnectors(this.playbackCtx, pose, Holistic.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
-                DrawingUtils.drawLandmarks(this.playbackCtx, pose, { color: '#FF0000', lineWidth: 2 });
-                DrawingUtils.drawConnectors(this.playbackCtx, face, Holistic.FACE_CONNECTIONS, { color: '#FFFFFF', lineWidth: 1 });
-                DrawingUtils.drawLandmarks(this.playbackCtx, face, { color: '#E0E0E0', lineWidth: 0.5 });
-                DrawingUtils.drawConnectors(this.playbackCtx, leftHand, Holistic.HAND_CONNECTIONS, { color: '#CC0000', lineWidth: 5 });
-                DrawingUtils.drawLandmarks(this.playbackCtx, leftHand, { color: '#FF0000', lineWidth: 2 });
-                DrawingUtils.drawConnectors(this.playbackCtx, rightHand, Holistic.HAND_CONNECTIONS, { color: '#00CC00', lineWidth: 5 });
-                DrawingUtils.drawLandmarks(this.playbackCtx, rightHand, { color: '#00FF00', lineWidth: 2 });
+                // Draw landmarks with error handling
+                try {
+                    if (pose && typeof DrawingUtils !== 'undefined') {
+                        DrawingUtils.drawConnectors(this.playbackCtx, pose, Holistic.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
+                        DrawingUtils.drawLandmarks(this.playbackCtx, pose, { color: '#FF0000', lineWidth: 2 });
+                    }
+                    if (face && typeof DrawingUtils !== 'undefined') {
+                        DrawingUtils.drawConnectors(this.playbackCtx, face, Holistic.FACE_CONNECTIONS, { color: '#FFFFFF', lineWidth: 1 });
+                        DrawingUtils.drawLandmarks(this.playbackCtx, face, { color: '#E0E0E0', lineWidth: 0.5 });
+                    }
+                    if (leftHand && typeof DrawingUtils !== 'undefined') {
+                        DrawingUtils.drawConnectors(this.playbackCtx, leftHand, Holistic.HAND_CONNECTIONS, { color: '#CC0000', lineWidth: 5 });
+                        DrawingUtils.drawLandmarks(this.playbackCtx, leftHand, { color: '#FF0000', lineWidth: 2 });
+                    }
+                    if (rightHand && typeof DrawingUtils !== 'undefined') {
+                        DrawingUtils.drawConnectors(this.playbackCtx, rightHand, Holistic.HAND_CONNECTIONS, { color: '#00CC00', lineWidth: 5 });
+                        DrawingUtils.drawLandmarks(this.playbackCtx, rightHand, { color: '#00FF00', lineWidth: 2 });
+                    }
+                } catch (error) {
+                    console.warn('Failed to draw landmarks:', error);
+                }
             }
 
             loadStats() {

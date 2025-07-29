@@ -20,6 +20,24 @@ import tempfile
 import os
 from memory_utils import MemoryProcessor, MemoryFilter
 
+# Configuration constants to replace magic numbers
+CONFIG = {
+    'DEFAULT_MAX_QUEUE_SIZE': 1000,
+    'DEFAULT_QUEUE_TIMEOUT': 1.0,
+    'AUDIO_BUFFER_STALE_TIMEOUT': 5.0,
+    'MAX_AUDIO_BUFFER_SIZE': 10,
+    'MAX_CONSECUTIVE_ERRORS': 5,
+    'ERROR_PAUSE_DURATION': 1.0,
+    'THREAD_JOIN_TIMEOUT': 5.0,
+    'HIGH_STRESS_THRESHOLD': 0.7,
+    'HIGH_ENGAGEMENT_THRESHOLD': 0.8,
+    'LOW_ENGAGEMENT_THRESHOLD': 0.3,
+    'INSIGHT_TIME_PERIOD_DAYS': 7,
+    'RECENT_MEMORIES_LIMIT': 50,
+    'TOP_INSIGHTS_LIMIT': 10,
+    'STRESS_ALERT_MEMORY_COUNT': 5
+}
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -49,16 +67,26 @@ class MemoryNotification:
 class RealTimeMemoryProcessor:
     """Real-time memory processing with streaming analysis"""
     
-    def __init__(self, memory_processor: MemoryProcessor):
+    def __init__(self, memory_processor: MemoryProcessor, max_queue_size: Optional[int] = None):
         self.memory_processor = memory_processor
-        self.processing_queue = queue.Queue()
+        max_queue_size = max_queue_size or CONFIG['DEFAULT_MAX_QUEUE_SIZE']
+        self.processing_queue = queue.Queue(maxsize=max_queue_size)  # Bounded queue
         self.subscribers = []
+        self.subscribers_lock = threading.Lock()  # Thread-safe subscriber list
         self.is_running = False
         self.worker_thread = None
+        self._shutdown_event = threading.Event()  # Clean shutdown signaling
         
     def subscribe(self, callback: Callable[[Dict], None]):
-        """Subscribe to real-time memory events"""
-        self.subscribers.append(callback)
+        """Subscribe to real-time memory events (thread-safe)"""
+        with self.subscribers_lock:
+            self.subscribers.append(callback)
+    
+    def unsubscribe(self, callback: Callable[[Dict], None]):
+        """Unsubscribe from real-time memory events (thread-safe)"""
+        with self.subscribers_lock:
+            if callback in self.subscribers:
+                self.subscribers.remove(callback)
     
     def start_processing(self):
         """Start real-time processing thread"""
@@ -66,75 +94,140 @@ class RealTimeMemoryProcessor:
             return
             
         self.is_running = True
+        self._shutdown_event.clear()
         self.worker_thread = threading.Thread(target=self._process_loop, daemon=True)
         self.worker_thread.start()
         logger.info("Real-time memory processing started")
     
-    def stop_processing(self):
-        """Stop real-time processing"""
+    def stop_processing(self, timeout: Optional[float] = None):
+        """Stop real-time processing with proper cleanup"""
+        if not self.is_running:
+            return
+            
+        timeout = timeout or CONFIG['THREAD_JOIN_TIMEOUT']
         self.is_running = False
-        if self.worker_thread:
-            self.worker_thread.join()
+        self._shutdown_event.set()
+        
+        if self.worker_thread and self.worker_thread.is_alive():
+            self.worker_thread.join(timeout=timeout)
+            if self.worker_thread.is_alive():
+                logger.warning("Worker thread did not shut down gracefully")
+        
+        # Clear remaining queue items
+        try:
+            while True:
+                self.processing_queue.get_nowait()
+                self.processing_queue.task_done()
+        except queue.Empty:
+            pass
+            
         logger.info("Real-time memory processing stopped")
     
-    def queue_memory(self, memory_data: Dict):
-        """Queue a memory for real-time processing"""
-        self.processing_queue.put({
-            'type': 'memory',
-            'data': memory_data,
-            'timestamp': time.time()
-        })
+    def queue_memory(self, memory_data: Dict, timeout: float = 1.0):
+        """Queue a memory for real-time processing with backpressure handling"""
+        try:
+            self.processing_queue.put({
+                'type': 'memory',
+                'data': memory_data,
+                'timestamp': time.time()
+            }, timeout=timeout)
+        except queue.Full:
+            logger.warning("Processing queue is full, dropping memory data")
+            return False
+        return True
     
-    def queue_audio_chunk(self, audio_chunk: bytes, metadata: Dict):
-        """Queue an audio chunk for streaming analysis"""
-        self.processing_queue.put({
-            'type': 'audio_chunk',
-            'data': audio_chunk,
-            'metadata': metadata,
-            'timestamp': time.time()
-        })
+    def queue_audio_chunk(self, audio_chunk: bytes, metadata: Dict, timeout: float = 0.5):
+        """Queue an audio chunk for streaming analysis with backpressure handling"""
+        try:
+            self.processing_queue.put({
+                'type': 'audio_chunk',
+                'data': audio_chunk,
+                'metadata': metadata,
+                'timestamp': time.time()
+            }, timeout=timeout)
+        except queue.Full:
+            logger.warning("Processing queue is full, dropping audio chunk")
+            return False
+        return True
     
     def _process_loop(self):
-        """Main processing loop"""
+        """Main processing loop with enhanced error handling"""
         # Store audio chunks for streaming transcription
         audio_buffer = []
         last_chunk_time = 0
+        consecutive_errors = 0
         
-        while self.is_running:
+        logger.info("Processing loop started")
+        
+        while self.is_running and not self._shutdown_event.is_set():
             try:
                 # Process items from queue with timeout
                 try:
-                    item = self.processing_queue.get(timeout=1.0)
+                    item = self.processing_queue.get(timeout=CONFIG['DEFAULT_QUEUE_TIMEOUT'])
+                    consecutive_errors = 0  # Reset error counter on successful get
                 except queue.Empty:
                     # Process any remaining audio chunks if buffer is getting stale
-                    if audio_buffer and (time.time() - last_chunk_time > 5.0):
+                    if audio_buffer and (time.time() - last_chunk_time > CONFIG['AUDIO_BUFFER_STALE_TIMEOUT']):
+                        logger.debug("Processing stale audio buffer")
                         self._process_audio_buffer(audio_buffer)
                         audio_buffer = []
+                    continue
+                
+                # Validate item structure
+                if not isinstance(item, dict) or 'type' not in item:
+                    logger.error("Invalid item structure in queue")
+                    self.processing_queue.task_done()
                     continue
                 
                 # Handle different item types
                 if item['type'] == 'memory':
                     # Process complete memory
-                    self._process_memory_data(item['data'])
+                    if 'data' in item:
+                        self._process_memory_data(item['data'])
+                    else:
+                        logger.error("Memory item missing data field")
                     
                 elif item['type'] == 'audio_chunk':
+                    # Validate audio chunk
+                    if 'data' not in item or 'metadata' not in item:
+                        logger.error("Audio chunk missing required fields")
+                        self.processing_queue.task_done()
+                        continue
+                        
                     # Add to audio buffer
                     audio_buffer.append(item)
                     last_chunk_time = time.time()
                     
                     # Process buffer if it's getting large
-                    if len(audio_buffer) >= 10:  # Process every 10 chunks or so
+                    if len(audio_buffer) >= CONFIG['MAX_AUDIO_BUFFER_SIZE']:
+                        logger.debug(f"Processing audio buffer with {len(audio_buffer)} chunks")
                         self._process_audio_buffer(audio_buffer)
                         audio_buffer = []
+                else:
+                    logger.warning(f"Unknown item type: {item['type']}")
                 
                 # Mark as done
                 self.processing_queue.task_done()
                 
             except Exception as e:
                 logger.error(f"Error in real-time processing: {e}")
+                consecutive_errors += 1
+                
+                # If too many consecutive errors, pause briefly
+                if consecutive_errors >= CONFIG['MAX_CONSECUTIVE_ERRORS']:
+                    logger.error(f"Too many consecutive errors ({consecutive_errors}), pausing processing")
+                    time.sleep(CONFIG['ERROR_PAUSE_DURATION'])
+                    consecutive_errors = 0
+        
+        # Process any remaining audio buffer before shutdown
+        if audio_buffer:
+            logger.info("Processing remaining audio buffer before shutdown")
+            self._process_audio_buffer(audio_buffer)
+            
+        logger.info("Processing loop ended")
                 
     def _process_memory_data(self, memory_data: Dict):
-        """Process complete memory data"""
+        """Process complete memory data with thread safety"""
         try:
             # Convert dict to Memory object if needed
             if not isinstance(memory_data, Memory):
@@ -145,15 +238,23 @@ class RealTimeMemoryProcessor:
             # Generate real-time insights
             insights = self._generate_insights([memory])
             
-            # Notify subscribers
+            # Generate real-time analysis
+            analysis = self._analyze_realtime_data(memory) if hasattr(self, '_analyze_realtime_data') else {}
+            
+            # Notify subscribers with thread safety
             event_data = {
                 'event_type': 'new_memory',
                 'memory_id': memory.id,
                 'insights': insights,
+                'analysis': analysis,
                 'timestamp': time.time()
             }
             
-            for callback in self.subscribers:
+            # Get thread-safe copy of subscribers
+            with self.subscribers_lock:
+                subscribers_copy = self.subscribers.copy()
+            
+            for callback in subscribers_copy:
                 try:
                     callback(event_data)
                 except Exception as e:
@@ -166,36 +267,74 @@ class RealTimeMemoryProcessor:
             return None
     
     def _process_audio_buffer(self, audio_chunks: List[Dict]):
-        """Process a buffer of audio chunks"""
+        """Process a buffer of audio chunks with enhanced error handling"""
+        temp_path = None
         try:
             if not audio_chunks:
                 return
                 
+            # Validate audio chunks
+            for chunk in audio_chunks:
+                if not isinstance(chunk.get('data'), bytes):
+                    logger.error("Invalid audio chunk data type")
+                    return
+                if not chunk.get('metadata'):
+                    logger.warning("Audio chunk missing metadata")
+                    
             # Concatenate audio data
-            audio_data = b''.join([chunk['data'] for chunk in audio_chunks])
+            try:
+                audio_data = b''.join([chunk['data'] for chunk in audio_chunks])
+            except (KeyError, TypeError) as e:
+                logger.error(f"Failed to concatenate audio data: {e}")
+                return
+                
+            if len(audio_data) == 0:
+                logger.warning("Empty audio data after concatenation")
+                return
+                
             metadata = audio_chunks[-1]['metadata']  # Use latest metadata
             
-            # Create a temporary file
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-                temp_path = temp_file.name
-                temp_file.write(audio_data)
+            # Determine suffix from metadata or use default
+            format_hint = metadata.get('format', 'wav').lower()
+            # Validate format
+            valid_formats = ['wav', 'mp3', 'flac', 'm4a', 'ogg']
+            if format_hint not in valid_formats:
+                logger.warning(f"Unknown audio format '{format_hint}', using wav")
+                format_hint = 'wav'
+            suffix = f'.{format_hint}'
+            
+            # Create a temporary file with proper error handling
+            try:
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
+                    temp_path = temp_file.name
+                    temp_file.write(audio_data)
+            except (OSError, IOError) as e:
+                logger.error(f"Failed to create temporary audio file: {e}")
+                return
             
             try:
-                # Use memory processor to transcribe
-                # Get models directly from memory processor
+                # Use memory processor to transcribe with error handling
                 whisper_model = self.memory_processor.get_whisper_model()
+                if not whisper_model:
+                    logger.error("Whisper model not available")
+                    return
+                    
                 result = whisper_model.transcribe(temp_path)
-                text = result["text"].strip()
+                text = result.get("text", "").strip()
                 
                 if not text:
                     logger.info("No speech detected in audio buffer")
                     return
                 
-                # Analyze emotion in streaming mode
+                # Analyze emotion in streaming mode with error handling
                 emotion_analyzer = self.memory_processor.get_emotion_analyzer()
+                if not emotion_analyzer:
+                    logger.error("Emotion analyzer not available")
+                    return
+                    
                 emotion_result = emotion_analyzer(text)[0]
-                emotion = emotion_result["label"]
-                emotion_score = emotion_result["score"]
+                emotion = emotion_result.get("label", "neutral")
+                emotion_score = emotion_result.get("score", 0.5)
                 
                 # Create a streaming event
                 stream_event = {
@@ -207,22 +346,31 @@ class RealTimeMemoryProcessor:
                     'timestamp': time.time()
                 }
                 
-                # Notify subscribers
-                for callback in self.subscribers:
+                # Notify subscribers with thread safety
+                with self.subscribers_lock:
+                    subscribers_copy = self.subscribers.copy()
+                    
+                for callback in subscribers_copy:
                     try:
                         callback(stream_event)
                     except Exception as e:
                         logger.error(f"Error in subscriber callback: {e}")
                 
                 logger.info(f"Processed audio buffer: {len(text)} chars")
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass
+                
+            except Exception as e:
+                logger.error(f"Error during audio transcription/analysis: {e}")
+                
         except Exception as e:
             logger.error(f"Error processing audio buffer: {e}")
+        finally:
+            # Guaranteed temp file cleanup
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                    logger.debug(f"Cleaned up temp file: {temp_path}")
+                except OSError as e:
+                    logger.error(f"Failed to cleanup temp file {temp_path}: {e}")
     
     def _generate_insights(self, memories: List[Memory]) -> List[Dict]:
         """Generate insights from memories"""
@@ -262,6 +410,8 @@ class RealTimeMemoryProcessor:
                 logger.error(f"Error generating insights: {e}")
                 
             return insights
+            
+    def _analyze_realtime_data(self, memory_data: Memory) -> Dict[str, Any]:
         """Real-time analysis of memory data"""
         analysis = {
             'patterns_detected': [],
@@ -293,7 +443,7 @@ class SmartInsightEngine:
         self.memory_processor = memory_processor
         self.insight_history = []
     
-    async def generate_insights(self, time_period: int = 7) -> List[MemoryInsight]:
+    def generate_insights(self, time_period: int = 7) -> List[MemoryInsight]:
         """Generate AI insights from recent memories"""
         insights = []
         
@@ -311,18 +461,18 @@ class SmartInsightEngine:
             return insights
         
         # Pattern analysis
-        insights.extend(await self._analyze_engagement_patterns(memories))
-        insights.extend(await self._analyze_stress_patterns(memories))
-        insights.extend(await self._analyze_location_performance(memories))
-        insights.extend(await self._analyze_temporal_patterns(memories))
-        insights.extend(await self._analyze_emotion_trends(memories))
+        insights.extend(self._analyze_engagement_patterns(memories))
+        insights.extend(self._analyze_stress_patterns(memories))
+        insights.extend(self._analyze_location_performance(memories))
+        insights.extend(self._analyze_temporal_patterns(memories))
+        insights.extend(self._analyze_emotion_trends(memories))
         
         # Filter and rank insights
         insights = self._rank_insights(insights)
         
         return insights[:10]  # Return top 10 insights
     
-    async def _analyze_engagement_patterns(self, memories: List[Memory]) -> List[MemoryInsight]:
+    def _analyze_engagement_patterns(self, memories: List[Memory]) -> List[MemoryInsight]:
         """Analyze engagement level patterns"""
         insights = []
         
@@ -368,7 +518,7 @@ class SmartInsightEngine:
         
         return insights
     
-    async def _analyze_stress_patterns(self, memories: List[Memory]) -> List[MemoryInsight]:
+    def _analyze_stress_patterns(self, memories: List[Memory]) -> List[MemoryInsight]:
         """Analyze stress level patterns"""
         insights = []
         
@@ -414,8 +564,8 @@ class SmartInsightEngine:
         
         return insights
     
-    async def _analyze_location_performance(self, memories: List[Memory]) -> List[MemoryInsight]:
-        """Analyze performance by location"""
+    def _analyze_location_performance(self, memories: List[Memory]) -> List[MemoryInsight]:
+        """Analyze location-based performance"""
         insights = []
         
         # Analyze importance scores by location
@@ -459,8 +609,8 @@ class SmartInsightEngine:
         
         return insights
     
-    async def _analyze_temporal_patterns(self, memories: List[Memory]) -> List[MemoryInsight]:
-        """Analyze patterns over time"""
+    def _analyze_temporal_patterns(self, memories: List[Memory]) -> List[MemoryInsight]:
+        """Analyze time-based patterns"""
         insights = []
         
         # Analyze engagement trends over time
@@ -508,8 +658,8 @@ class SmartInsightEngine:
         
         return insights
     
-    async def _analyze_emotion_trends(self, memories: List[Memory]) -> List[MemoryInsight]:
-        """Analyze emotional patterns"""
+    def _analyze_emotion_trends(self, memories: List[Memory]) -> List[MemoryInsight]:
+        """Analyze emotion trends"""
         insights = []
         
         # Count emotions
@@ -597,12 +747,12 @@ class SmartNotificationSystem:
             'priority_threshold': 'medium'
         }
     
-    async def generate_smart_notifications(self) -> List[MemoryNotification]:
+    def generate_smart_notifications(self) -> List[MemoryNotification]:
         """Generate intelligent notifications based on insights and patterns"""
         notifications = []
         
         # Get recent insights
-        insights = await self.insight_engine.generate_insights(time_period=7)
+        insights = self.insight_engine.generate_insights(time_period=7)
         
         # Convert high-priority insights to notifications
         for insight in insights:
@@ -611,11 +761,11 @@ class SmartNotificationSystem:
                 notifications.append(notification)
         
         # Check for pattern-based notifications
-        pattern_notifications = await self._check_pattern_alerts()
+        pattern_notifications = self._check_pattern_alerts()
         notifications.extend(pattern_notifications)
         
         # Check for goal progress notifications
-        goal_notifications = await self._check_goal_progress()
+        goal_notifications = self._check_goal_progress()
         notifications.extend(goal_notifications)
         
         # Filter and prioritize
@@ -640,7 +790,7 @@ class SmartNotificationSystem:
             ]
         )
     
-    async def _check_pattern_alerts(self) -> List[MemoryNotification]:
+    def _check_pattern_alerts(self) -> List[MemoryNotification]:
         """Check for pattern-based alerts"""
         notifications = []
         
@@ -656,7 +806,7 @@ class SmartNotificationSystem:
                 for m in recent_memories
             ])
             
-            if avg_stress > 0.7:  # High stress day
+            if avg_stress > CONFIG['HIGH_STRESS_THRESHOLD']:  # High stress day
                 notifications.append(MemoryNotification(
                     notification_id=f"stress_alert_{int(time.time())}",
                     type="pattern_alert",
@@ -664,7 +814,7 @@ class SmartNotificationSystem:
                     message=f"Your stress levels have been elevated today (avg: {avg_stress*100:.0f}%). Consider taking a break.",
                     priority="high",
                     scheduled_time=datetime.now(),
-                    memory_ids=[m['id'] for m in recent_memories[-5:]],
+                    memory_ids=[m.id for m in recent_memories[-CONFIG['STRESS_ALERT_MEMORY_COUNT']:]],
                     actions=[
                         {"action": "view_stress_memories", "label": "View Details"},
                         {"action": "schedule_break", "label": "Schedule Break"},
@@ -674,7 +824,7 @@ class SmartNotificationSystem:
         
         return notifications
     
-    async def _check_goal_progress(self) -> List[MemoryNotification]:
+    def _check_goal_progress(self) -> List[MemoryNotification]:
         """Check progress toward user goals"""
         notifications = []
         
@@ -761,7 +911,7 @@ async def main():
     try:
         # Generate insights
         print("Generating insights...")
-        insights = await insight_engine.generate_insights()
+        insights = insight_engine.generate_insights()
         
         for insight in insights[:3]:  # Show top 3
             print(f"\n{insight.insight_type.upper()}: {insight.title}")
@@ -771,7 +921,7 @@ async def main():
         
         # Generate notifications
         print("\nGenerating notifications...")
-        notifications = await notification_system.generate_smart_notifications()
+        notifications = notification_system.generate_smart_notifications()
         
         for notification in notifications:
             print(f"\n{notification.type.upper()}: {notification.title}")

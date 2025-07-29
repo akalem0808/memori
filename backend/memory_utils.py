@@ -1,9 +1,10 @@
-# Core Business Logic - Complete Implementation
+# Core Business Logic - Complete Implementation with Security Fixes
 import sqlite3
 import json
 import uuid
 import time
 import os
+import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from sentence_transformers import SentenceTransformer
@@ -13,59 +14,316 @@ from transformers import pipeline
 from memory_model import Memory
 import whisper
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Configuration constants to replace magic numbers
+MEMORY_CONFIG = {
+    'COLLECTION_NAME_PREFIX': 'memories_v1',
+    'MIN_EMOTION_CONFIDENCE': 0.7,
+    'MIN_IMPORTANCE_SCORE': 0.3,
+    'DEFAULT_EMBEDDING_MODEL': 'all-MiniLM-L6-v2',
+    'DEFAULT_EMOTION_MODEL': 'j-hartmann/emotion-english-distilroberta-base',
+    'DEFAULT_WHISPER_MODEL': 'base',
+    'MAX_COLLECTION_RETRIES': 3,
+    'DATABASE_TIMEOUT': 30.0,
+    'CHUNK_SIZE': 1000
+}
+
 class MemoryProcessor:
-    def __init__(self, db_path='memory_system.db'):
+    def __init__(self, db_path='memory_system.db', collection_name=None):
         self.db_path = db_path
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.collection_name = collection_name or f"{MEMORY_CONFIG['COLLECTION_NAME_PREFIX']}_{int(time.time())}"
         
-        # Initialize AI models
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        self.emotion_analyzer = pipeline(
-            "text-classification", 
-            model="j-hartmann/emotion-english-distilroberta-base"
-        )
-        
-        # Initialize vector database
-        self.vector_client = chromadb.Client()
+        # Initialize database connection with timeout
         try:
-            self.collection = self.vector_client.get_collection("memories")
-        except:
-            self.collection = self.vector_client.create_collection("memories")
+            self.conn = sqlite3.connect(
+                db_path, 
+                check_same_thread=False,
+                timeout=MEMORY_CONFIG['DATABASE_TIMEOUT']
+            )
+            # Enable WAL mode for better concurrency
+            self.conn.execute('PRAGMA journal_mode=WAL')
+            self.conn.execute('PRAGMA foreign_keys=ON')
+        except sqlite3.Error as e:
+            logger.error("Failed to connect to database: %s", e)
+            raise RuntimeError(f"Database connection failed: {e}") from e
         
+        # Initialize AI models with fallbacks
+        self._initialize_models()
+        
+        # Initialize vector database with collision handling
+        self._initialize_vector_db()
+        
+        # Initialize database schema with migrations
         self._init_database()
+        
+    def _initialize_models(self):
+        """Initialize AI models with proper error handling and fallbacks"""
+        try:
+            logger.info("Loading embedding model...")
+            self.embedder = SentenceTransformer(MEMORY_CONFIG['DEFAULT_EMBEDDING_MODEL'])
+        except Exception as e:
+            logger.error("Failed to load embedding model: %s", e)
+            raise RuntimeError(f"Embedding model initialization failed: {e}") from e
+        
+        try:
+            logger.info("Loading emotion analyzer...")
+            self.emotion_analyzer = pipeline(
+                "text-classification", 
+                model=MEMORY_CONFIG['DEFAULT_EMOTION_MODEL'],
+                device=-1  # Use CPU to avoid GPU issues
+            )
+        except Exception as e:
+            logger.error("Failed to load emotion analyzer: %s", e)
+            # Create a fallback emotion analyzer
+            logger.warning("Using fallback emotion analyzer")
+            self.emotion_analyzer = self._create_fallback_emotion_analyzer()
+    
+    def _create_fallback_emotion_analyzer(self):
+        """Create a simple fallback emotion analyzer"""
+        class FallbackEmotionAnalyzer:
+            def __call__(self, text):
+                # Simple keyword-based emotion detection
+                text_lower = text.lower()
+                if any(word in text_lower for word in ['happy', 'joy', 'great', 'excellent']):
+                    return [{'label': 'joy', 'score': 0.8}]
+                elif any(word in text_lower for word in ['sad', 'upset', 'terrible', 'awful']):
+                    return [{'label': 'sadness', 'score': 0.8}]
+                elif any(word in text_lower for word in ['angry', 'mad', 'furious', 'annoyed']):
+                    return [{'label': 'anger', 'score': 0.8}]
+                else:
+                    return [{'label': 'neutral', 'score': 0.7}]
+        
+        return FallbackEmotionAnalyzer()
+    
+    def _initialize_vector_db(self):
+        """Initialize vector database with proper collision handling"""
+        try:
+            self.vector_client = chromadb.Client()
+            
+            # Try to get existing collection first
+            retry_count = 0
+            while retry_count < MEMORY_CONFIG['MAX_COLLECTION_RETRIES']:
+                try:
+                    self.collection = self.vector_client.get_collection(self.collection_name)
+                    logger.info("Connected to existing ChromaDB collection: %s", self.collection_name)
+                    break
+                except ValueError:
+                    # Collection doesn't exist, try to create it
+                    try:
+                        self.collection = self.vector_client.create_collection(
+                            name=self.collection_name,
+                            metadata={"description": "Memory embeddings collection"}
+                        )
+                        logger.info("Created new ChromaDB collection: %s", self.collection_name)
+                        break
+                    except ValueError as e:
+                        if "already exists" in str(e):
+                            # Collection was created by another process, try with different name
+                            retry_count += 1
+                            self.collection_name = f"{MEMORY_CONFIG['COLLECTION_NAME_PREFIX']}_{int(time.time())}_{retry_count}"
+                            logger.warning("Collection name collision, trying: %s", self.collection_name)
+                        else:
+                            raise
+                except Exception as e:
+                    logger.error("ChromaDB error: %s", e)
+                    raise RuntimeError(f"Vector database initialization failed: {e}") from e
+            
+            if retry_count >= MEMORY_CONFIG['MAX_COLLECTION_RETRIES']:
+                raise RuntimeError("Failed to create unique ChromaDB collection after retries")
+                
+        except Exception as e:
+            logger.error("Failed to initialize vector database: %s", e)
+            raise
+        
+    def close(self):
+        """Close database connections and resources"""
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
+        # Additional cleanup for other resources if needed
 
     def _init_database(self):
-        """Initialize SQLite database tables"""
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS memories (
+        """Initialize database tables with proper schema and migrations"""
+        try:
+            # Create main memories table with proper constraints
+            self.conn.execute('''CREATE TABLE IF NOT EXISTS memories (
                 id TEXT PRIMARY KEY,
-                text TEXT NOT NULL,
+                content TEXT NOT NULL CHECK(length(content) > 0),
                 emotion TEXT,
-                emotion_scores TEXT,
+                importance REAL CHECK(importance >= 0 AND importance <= 1),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 tags TEXT,
-                topics TEXT,
-                importance_score REAL,
-                timestamp REAL,
-                metadata TEXT,
-                created_at TEXT
-            )
-        ''')
-        self.conn.commit()
+                context TEXT,
+                version INTEGER DEFAULT 1
+            )''')
+            
+            # Create indexes for better query performance
+            self.conn.execute('''CREATE INDEX IF NOT EXISTS idx_memories_created_at 
+                                ON memories(created_at)''')
+            self.conn.execute('''CREATE INDEX IF NOT EXISTS idx_memories_emotion 
+                                ON memories(emotion)''')
+            self.conn.execute('''CREATE INDEX IF NOT EXISTS idx_memories_importance 
+                                ON memories(importance)''')
+            
+            # Create schema version table for migrations
+            self.conn.execute('''CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+            
+            # Check and apply migrations if needed
+            self._apply_database_migrations()
+            
+            self.conn.commit()
+            logger.info("Database schema initialized successfully")
+            
+        except sqlite3.Error as e:
+            logger.error("Database initialization failed: %s", e)
+            raise RuntimeError(f"Database schema creation failed: {e}") from e
+    
+    def _apply_database_migrations(self):
+        """Apply database migrations based on version"""
+        try:
+            cursor = self.conn.execute("SELECT MAX(version) FROM schema_version")
+            current_version = cursor.fetchone()[0] or 0
+            
+            if current_version < 1:
+                # Migration 1: Add updated_at trigger
+                self.conn.execute('''
+                    CREATE TRIGGER IF NOT EXISTS update_memories_timestamp 
+                    AFTER UPDATE ON memories
+                    FOR EACH ROW
+                    BEGIN
+                        UPDATE memories SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                    END
+                ''')
+                self.conn.execute("INSERT INTO schema_version (version) VALUES (1)")
+                logger.info("Applied database migration version 1")
+            
+        except sqlite3.Error as e:
+            logger.error("Migration failed: %s", e)
+            raise
+    
+    def add_memory(self, content: str, context: str = "", tags: Optional[List[str]] = None) -> str:
+        """Add a new memory with full processing and proper error handling"""
+        if not content or not content.strip():
+            raise ValueError("Memory content cannot be empty")
+        
+        memory_id = str(uuid.uuid4())
+        
+        try:
+            # Analyze emotion with confidence checking
+            try:
+                emotion_result = self.emotion_analyzer(content)
+                if emotion_result and len(emotion_result) > 0:
+                    emotion_data = emotion_result[0]
+                    if emotion_data.get('score', 0) >= MEMORY_CONFIG['MIN_EMOTION_CONFIDENCE']:
+                        emotion = emotion_data['label']
+                    else:
+                        emotion = 'neutral'  # Low confidence fallback
+                else:
+                    emotion = 'neutral'
+            except Exception as e:
+                logger.warning("Emotion analysis failed, using neutral: %s", e)
+                emotion = 'neutral'
+            
+            # Calculate importance with improved heuristic
+            importance = self._calculate_importance(content, context, tags)
+            
+            # Validate importance score
+            if importance < 0 or importance > 1:
+                importance = max(0, min(1, importance))
+            
+            # Store in SQLite with parameterized query
+            tags_json = json.dumps(tags or [])
+            cursor = self.conn.execute("""
+                INSERT INTO memories (id, content, emotion, importance, tags, context)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (memory_id, content, emotion, importance, tags_json, context))
+            
+            if cursor.rowcount == 0:
+                raise sqlite3.Error("Failed to insert memory record")
+            
+            # Generate and store embedding with error handling
+            try:
+                embedding = self.embedder.encode(content)
+                self.collection.add(
+                    embeddings=[embedding.tolist()],
+                    documents=[content],
+                    metadatas=[{
+                        "memory_id": memory_id,
+                        "emotion": emotion,
+                        "importance": importance,
+                        "created_at": datetime.now().isoformat(),
+                        "tags": tags_json
+                    }],
+                    ids=[memory_id]
+                )
+            except Exception as e:
+                logger.error("Failed to store embedding for memory %s: %s", memory_id, e)
+                # Rollback SQLite transaction
+                self.conn.rollback()
+                raise RuntimeError(f"Vector storage failed: {e}") from e
+            
+            self.conn.commit()
+            logger.info("Successfully added memory: %s", memory_id)
+            return memory_id
+            
+        except sqlite3.Error as e:
+            logger.error("Database error adding memory: %s", e)
+            self.conn.rollback()
+            raise RuntimeError(f"Failed to add memory to database: {e}") from e
+        except Exception as e:
+            logger.error("Unexpected error adding memory: %s", e)
+            self.conn.rollback()
+            raise RuntimeError(f"Failed to add memory: {e}") from e
+    
+    def _calculate_importance(self, content: str, context: str = "", tags: Optional[List[str]] = None) -> float:
+        """Calculate memory importance using multiple factors"""
+        importance = 0.0
+        
+        # Content length factor (normalized)
+        content_factor = min(len(content) / 1000, 0.3)
+        importance += content_factor
+        
+        # Context factor
+        if context and context.strip():
+            context_factor = min(len(context) / 500, 0.2)
+            importance += context_factor
+        
+        # Tags factor (more tags = more organized = more important)
+        if tags:
+            tags_factor = min(len(tags) * 0.1, 0.2)
+            importance += tags_factor
+        
+        # Keyword importance factor
+        important_keywords = ['important', 'remember', 'critical', 'urgent', 'key', 'essential']
+        content_lower = content.lower()
+        keyword_matches = sum(1 for keyword in important_keywords if keyword in content_lower)
+        keyword_factor = min(keyword_matches * 0.1, 0.3)
+        importance += keyword_factor
+        
+        return min(importance, 1.0)
         
     def get_whisper_model(self):
-        """Get or initialize the Whisper model"""
+        """Get or initialize the Whisper model with proper error handling"""
         if not hasattr(self, '_whisper_model'):
             try:
-                self._whisper_model = whisper.load_model("base")
-            except AttributeError:
+                import whisper
+                self._whisper_model = whisper.load_model(MEMORY_CONFIG['DEFAULT_WHISPER_MODEL'])
+                logger.info("Whisper model loaded successfully")
+            except (ImportError, AttributeError) as e:
                 # Fallback for testing or when whisper is not available
-                import logging
-                logging.warning("Whisper not available, using mock model")
+                logger.warning("Whisper not available, using mock model: %s", e)
                 class MockWhisperModel:
                     def transcribe(self, audio_path):
                         return {"text": "This is a mock transcription for testing"}
                 self._whisper_model = MockWhisperModel()
+            except Exception as e:
+                logger.error("Failed to load Whisper model: %s", e)
+                raise RuntimeError(f"Whisper model initialization failed: {e}") from e
         return self._whisper_model
     
     def get_emotion_analyzer(self):
@@ -103,7 +361,7 @@ class MemoryProcessor:
         
         # Generate tags and calculate importance
         tags = self._generate_text_tags(text, emotion_label)
-        importance_score = self._calculate_importance(text, emotion_score)
+        importance_score = self._calculate_text_importance(text, emotion_score)
         
         # Create memory data
         memory_data = {
@@ -283,7 +541,7 @@ class MemoryProcessor:
     def search_memories(self, query: Optional[str] = None, emotion: Optional[str] = None,
                        tags: Optional[List[str]] = None, date_from: Optional[datetime] = None,
                        date_to: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """Search memories based on various criteria"""
+        """Search memories based on various criteria with proper SQL security"""
         conditions = []
         params = []
         
@@ -305,37 +563,49 @@ class MemoryProcessor:
         
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         
-        cursor = self.conn.cursor()
-        cursor.execute(f'''
-            SELECT * FROM memories 
-            WHERE {where_clause}
-            ORDER BY timestamp DESC
-        ''', params)
-        rows = cursor.fetchall()
-        
-        memories = []
-        for row in rows:
-            memory = {
-                'id': row[0],
-                'text': row[1],
-                'emotion': row[2],
-                'emotion_scores': json.loads(row[3]) if row[3] else {},
-                'tags': json.loads(row[4]) if row[4] else [],
-                'topics': json.loads(row[5]) if row[5] else [],
-                'importance_score': row[6],
-                'timestamp': row[7],
-                'metadata': json.loads(row[8]) if row[8] else None
-            }
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(f'''
+                SELECT * FROM memories 
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+            ''', params)
+            rows = cursor.fetchall()
             
-            # Filter by tags if specified
-            if tags:
-                memory_tags = memory['tags']
-                if any(tag in memory_tags for tag in tags):
-                    memories.append(memory)
-            else:
-                memories.append(memory)
-        
-        return memories
+            memories = []
+            for row in rows:
+                try:
+                    memory = {
+                        'id': row[0],
+                        'text': row[1],
+                        'emotion': row[2],
+                        'emotion_scores': json.loads(row[3]) if row[3] else {},
+                        'tags': json.loads(row[4]) if row[4] else [],
+                        'topics': json.loads(row[5]) if row[5] else [],
+                        'importance_score': row[6],
+                        'timestamp': row[7],
+                        'metadata': json.loads(row[8]) if row[8] else None
+                    }
+                    
+                    # Filter by tags if specified
+                    if tags:
+                        memory_tags = memory['tags']
+                        if any(tag in memory_tags for tag in tags):
+                            memories.append(memory)
+                    else:
+                        memories.append(memory)
+                except (json.JSONDecodeError, IndexError, TypeError) as e:
+                    logger.warning("Failed to parse memory row: %s", e)
+                    continue
+                    
+            return memories
+            
+        except sqlite3.Error as e:
+            logger.error("Database error in search_memories: %s", e)
+            return []
+        except Exception as e:
+            logger.error("Unexpected error in search_memories: %s", e)
+            return []
 
     def delete_memory(self, memory_id: str) -> bool:
         """Delete a memory"""
@@ -367,7 +637,7 @@ class MemoryProcessor:
         emotion_score = emotion_result["score"]
         emotion_scores = {emotion_label: emotion_score}
         tags = self._generate_text_tags(text, emotion_label)
-        importance_score = self._calculate_importance(text, emotion_score)
+        importance_score = self._calculate_text_importance(text, emotion_score)
         
         # Update in SQLite
         cursor = self.conn.cursor()
@@ -525,8 +795,8 @@ class MemoryProcessor:
         
         return tags
 
-    def _calculate_importance(self, text: str, emotion_score: float) -> float:
-        """Calculate memory importance score"""
+    def _calculate_text_importance(self, text: str, emotion_score: float) -> float:
+        """Calculate memory importance score (renamed to avoid conflict)"""
         importance = 0.5  # Base importance
         
         # Length factor

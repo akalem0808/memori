@@ -7,6 +7,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <style>
+        /* TODO: Review and remove unused CSS classes for better performance */
+        
         * {
             margin: 0;
             padding: 0;
@@ -852,17 +854,41 @@
                 this.renderCurrentView();
             }
 
+            // Input sanitization helper
+            sanitizeInput(input) {
+                if (!input || typeof input !== 'string') return '';
+                
+                // Remove potential HTML/script tags and limit length
+                return input
+                    .replace(/<[^>]*>/g, '') // Remove HTML tags
+                    .replace(/[<>'"&]/g, '') // Remove potentially dangerous characters
+                    .trim()
+                    .substring(0, 500); // Limit length to prevent overflow
+            }
+
             performSearch() {
-                const query = document.getElementById('memorySearch').value.toLowerCase().trim();
+                const rawQuery = document.getElementById('memorySearch').value;
+                const query = this.sanitizeInput(rawQuery).toLowerCase();
+                
+                // Validate input length and content
+                if (query.length > 500) {
+                    alert('Search query too long. Please keep it under 500 characters.');
+                    return;
+                }
                 
                 if (!query) {
                     this.filteredMemories = [...this.memories];
                 } else {
                     this.filteredMemories = this.memories.filter(memory => {
-                        return memory.audio_text.toLowerCase().includes(query) ||
-                               memory.emotion.toLowerCase().includes(query) ||
-                               memory.movement_data.gesture_type.toLowerCase().includes(query) ||
-                               memory.context_data.environmental.venue_type?.toLowerCase().includes(query);
+                        try {
+                            return (memory.audio_text && memory.audio_text.toLowerCase().includes(query)) ||
+                                   (memory.emotion && memory.emotion.toLowerCase().includes(query)) ||
+                                   (memory.movement_data?.gesture_type && memory.movement_data.gesture_type.toLowerCase().includes(query)) ||
+                                   (memory.context_data?.environmental?.venue_type && memory.context_data.environmental.venue_type.toLowerCase().includes(query));
+                        } catch (error) {
+                            console.warn('Error filtering memory:', error);
+                            return false;
+                        }
                     });
                 }
 
@@ -1134,13 +1160,52 @@
             }
 
             setupCharts() {
-                // Initialize charts when charts view is selected
-                setTimeout(() => {
-                    this.createEmotionTimeChart();
-                    this.createEngagementStressChart();
-                    this.createLocationChart();
-                    this.createVolumeChart();
-                }, 100);
+                // Wait for DOM to be ready and check if Chart.js is loaded
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js not loaded');
+                    return;
+                }
+                
+                // Initialize charts when charts view is selected with proper DOM ready check
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        setTimeout(() => {
+                            this.createEmotionTimeChart();
+                            this.createEngagementStressChart();
+                            this.createLocationChart();
+                            this.createVolumeChart();
+                        }, 100);
+                    });
+                } else {
+                    setTimeout(() => {
+                        this.createEmotionTimeChart();
+                        this.createEngagementStressChart();
+                        this.createLocationChart();
+                        this.createVolumeChart();
+                    }, 100);
+                }
+            }
+
+            // Dynamic color generator for charts
+            generateColors(count) {
+                const colors = [
+                    '#ffffff', '#cccccc', '#999999', '#666666', '#333333',
+                    '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57',
+                    '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43',
+                    '#10ac84', '#ee5a24', '#0984e3', '#b55400', '#2d3436'
+                ];
+                
+                const result = [];
+                for (let i = 0; i < count; i++) {
+                    if (i < colors.length) {
+                        result.push(colors[i]);
+                    } else {
+                        // Generate additional colors if needed
+                        const hue = (i * 137.508) % 360; // Golden angle approximation
+                        result.push(`hsl(${hue}, 70%, 60%)`);
+                    }
+                }
+                return result;
             }
 
             createEmotionTimeChart() {
@@ -1250,13 +1315,32 @@
                     locationCounts[location] = (locationCounts[location] || 0) + 1;
                 });
 
+                // Generate dynamic colors based on data length
+                const generateColors = (count) => {
+                    const baseColors = ['#ffffff', '#cccccc', '#999999', '#666666', '#333333'];
+                    if (count <= baseColors.length) {
+                        return baseColors.slice(0, count);
+                    }
+                    
+                    // Generate additional colors if needed
+                    const colors = [...baseColors];
+                    for (let i = baseColors.length; i < count; i++) {
+                        const hue = (i * 137.508) % 360; // Golden angle for good distribution
+                        colors.push(`hsl(${hue}, 50%, 70%)`);
+                    }
+                    return colors;
+                };
+
+                const dataLabels = Object.keys(locationCounts);
+                const dataValues = Object.values(locationCounts);
+
                 new Chart(ctx, {
                     type: 'doughnut',
                     data: {
-                        labels: Object.keys(locationCounts),
+                        labels: dataLabels,
                         datasets: [{
-                            data: Object.values(locationCounts),
-                            backgroundColor: ['#ffffff', '#cccccc', '#999999', '#666666', '#333333']
+                            data: dataValues,
+                            backgroundColor: generateColors(dataLabels.length)
                         }]
                     },
                     options: {

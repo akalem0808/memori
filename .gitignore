@@ -29,6 +29,7 @@ ENV/
 env.bak/
 venv.bak/
 .conda/
+memori/
 
 # JS/Node
 node_modules/
@@ -73,3 +74,34 @@ Thumbs.db
 
 # Project specific
 /backend/.env
+/backend/uploads/
+/backend/test_server.py
+/backend/comprehensive_backend_test.py
+/backend/direct_backend_test.py
+/backend/backend_code_analyzer.py
+
+# Testing and development files
+*test_runner*.html
+FRONTEND_TEST_REPORT.js
+*TESTING_COMPLETE.md
+*TESTING_PLAN.md
+*FIXES_SUMMARY.md
+COMPLETE_CHANGES_LOG.md
+BUGS_FIXED_SUMMARY.md
+
+# Temporary and duplicate files
+*.pdf
+frontend_css.css
+tailwind_config.js
+vite_config.js
+audio_memory_system.py
+text_cleaner.py
+memory_viewer_interface.html
+memori.html
+
+# Documentation drafts and writeups
+writeup/
+
+# Test outputs and logs
+tests/
+*.log
