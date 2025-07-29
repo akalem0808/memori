@@ -10,7 +10,7 @@
 
 </div>
 
-## ✨ Overview
+##  Overview
 
 Memori is a cutting-edge audio memory system that transforms how you interact with audio content. Using state-of-the-art AI technologies, it transcribes speech, analyzes emotions, extracts insights, and creates a searchable knowledge base from your audio memories.
 
@@ -52,7 +52,7 @@ Memori is a cutting-edge audio memory system that transforms how you interact wi
 - **Modern browser** with WebRTC support for frontend
 - **Git** for version control
 
-### 🛠️ Installation
+### ️ Installation
 
 #### 1. Clone Repository
 ```bash
@@ -91,7 +91,7 @@ python -m http.server 8080
 # http://localhost:8080/memory_viewer_interface.html
 ```
 
-### 🐳 Docker Setup (Alternative)
+###  Docker Setup (Alternative)
 ```bash
 # Build and run with Docker
 docker build -t memori-backend ./backend
@@ -108,7 +108,7 @@ Once the backend is running, access the interactive API documentation:
 - **ReDoc**: http://localhost:8000/redoc
 - **OpenAPI Schema**: http://localhost:8000/openapi.json
 
-### 🔑 Key Endpoints
+###  Key Endpoints
 
 - `POST /memories/audio` - Upload and transcribe audio files
 - `GET /memories` - Retrieve all memories with filtering
@@ -220,7 +220,7 @@ nginx -s reload
 - **Concurrent Users**: Supports 100+ concurrent connections
 - **Storage**: Efficient vector storage with ChromaDB
 
-## 🤝 Contributing
+##  Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
 
@@ -241,7 +241,7 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - **OpenAI Whisper** for speech recognition
 - **Hugging Face** for transformer models
@@ -249,7 +249,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **FastAPI** for the excellent web framework
 - **MediaPipe** for body language analysis
 
-## 📞 Support
+##  Support
 
 For support and questions:
 - Create an [Issue](https://github.com/akalem0808/memori/issues)
@@ -260,7 +260,7 @@ For support and questions:
 
 <div align="center">
 
-**Built with ❤️ for better audio memory management**
+**Built with ️ for better audio memory management**
 
 [Home](/) | [Docs](./docs/) | [Tests](./docs/BACKEND_TESTING_COMPLETE.md) | [Deploy](./deployment/)
 
