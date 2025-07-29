@@ -843,7 +843,7 @@ class SmartNotificationSystem:
                 notifications.append(MemoryNotification(
                     notification_id=f"goal_progress_{int(time.time())}",
                     type="goal_progress",
-                    title="Great Engagement This Week! 🎉",
+                    title="Great Engagement This Week!",
                     message=f"You've maintained {avg_engagement*100:.0f}% average engagement. Keep it up!",
                     priority="medium",
                     scheduled_time=datetime.now(),
