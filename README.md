@@ -28,7 +28,7 @@ Memori is a cutting-edge audio memory system that transforms how you interact wi
 
 ## Architecture
 
-## 🏗️ Architecture
+## Architecture
 
 ### Backend (Python + FastAPI)
 - **FastAPI**: Modern, fast web framework with automatic API documentation
@@ -130,7 +130,7 @@ Once the backend is running, access the interactive API documentation:
 - Error handling verification
 - Security measures validation
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 memori/
@@ -155,7 +155,7 @@ memori/
 └── .env.example          # Environment variables template
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 Create a `.env` file in the backend directory:
@@ -182,7 +182,7 @@ RATE_LIMIT_WINDOW=60
 DATABASE_URL=sqlite:///memories.db
 ```
 
-## 🔒 Security Features
+## Security Features
 
 - **JWT Authentication**: Secure token-based authentication
 - **CORS Protection**: Configurable cross-origin request handling
@@ -191,7 +191,7 @@ DATABASE_URL=sqlite:///memories.db
 - **Rate Limiting**: Protection against abuse
 - **Secure Headers**: Additional security middleware
 
-## 🚀 Production Deployment
+## Production Deployment
 
 ### Backend Deployment
 ```bash
@@ -212,7 +212,7 @@ docker run -p 8000:8000 memori-prod
 nginx -s reload
 ```
 
-## 📈 Performance Metrics
+## Performance Metrics
 
 - **Audio Processing**: < 2s for 1-minute audio files
 - **Memory Search**: < 100ms for semantic queries
@@ -237,7 +237,7 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 - Documentation: Update README for new features
 - Testing: Maintain test coverage above 80%
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
@@ -262,6 +262,6 @@ For support and questions:
 
 **Built with ❤️ for better audio memory management**
 
-[🏠 Home](/) | [📚 Docs](./docs/) | [🧪 Tests](./BACKEND_TESTING_COMPLETE.md) | [🚀 Deploy](./deployment/)
+[Home](/) | [Docs](./docs/) | [Tests](./docs/BACKEND_TESTING_COMPLETE.md) | [Deploy](./deployment/)
 
 </div>
