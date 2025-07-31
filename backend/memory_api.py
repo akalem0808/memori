@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 from memory_utils import MemoryProcessor
 from audio_memory_assistant import AudioMemoryAssistant
 from memory_model import Memory
+from cloud_storage import storage_client, init_cloud_storage
 
 # Load environment variables
 load_dotenv()
@@ -101,7 +102,17 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan"""
     # Startup
     await app_state.initialize()
+    
+    # Initialize Cloud Storage
+    bucket_name = os.environ.get('GCS_BUCKET_NAME')
+    if bucket_name:
+        logger.info(f"Initializing Cloud Storage with bucket: {bucket_name}")
+        init_cloud_storage(bucket_name=bucket_name)
+    else:
+        logger.warning("No GCS_BUCKET_NAME environment variable found, using local storage only")
+    
     yield
+    
     # Shutdown
     await app_state.cleanup()
 
@@ -434,6 +445,20 @@ async def upload_audio_memory(
         
         # Process audio file
         try:
+            # Upload to GCS if available
+            gcs_url = None
+            if storage_client.is_available():
+                audio_filename = f"audio/{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe_filename}"
+                gcs_url = storage_client.upload_file(temp_file_path, audio_filename)
+                logger.info(f"Uploaded audio to GCS: {audio_filename}")
+                
+                # Add GCS URL to metadata if available
+                if gcs_url and (metadata_dict is None):
+                    metadata_dict = {}
+                if gcs_url:
+                    metadata_dict = metadata_dict or {}
+                    metadata_dict["audio_url"] = gcs_url
+            
             memory_data = audio_assistant.process_audio_file(temp_file_path, metadata_dict)
             
             if not memory_data:
@@ -442,6 +467,12 @@ async def upload_audio_memory(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     error_code="NO_SPEECH_DETECTED"
                 )
+            
+            # Add GCS URL to memory data if available
+            if isinstance(memory_data, Memory) and gcs_url:
+                memory_data.source_url = gcs_url
+            elif isinstance(memory_data, dict) and gcs_url:
+                memory_data["source_url"] = gcs_url
             
             # Convert Memory object to response format
             if isinstance(memory_data, Memory):

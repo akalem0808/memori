@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  PROJECT_ID: white-sandbox-451605-j5
+  GCS_BUCKET: memori_me
+  SERVICE_NAME: memori-service
+  REGION: us-central1
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -52,3 +58,38 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/memori:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          
+  deploy-to-gcp:
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+      
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v1
+        with:
+          service: memori
+          region: ${{ env.REGION }}
+          image: ghcr.io/${{ github.repository_owner }}/memori:latest
+          env_vars: |
+            GCS_BUCKET_NAME=${{ env.GCS_BUCKET }}
+      
+      - name: Show Output
+        run: echo ${{ steps.deploy.outputs.url }}

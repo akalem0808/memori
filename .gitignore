@@ -67,6 +67,12 @@ yarn-error.log
 ehthumbs.db
 Thumbs.db
 
+# Credentials and secrets
+*-key.json
+*-service-account.json
+*.pem
+*.key
+
 # Editor directories and files
 .idea/
 .vscode/
@@ -106,3 +112,8 @@ writeup/
 # Test outputs and logs
 tests/
 *.log
+
+# Google Cloud service account keys
+*-key.json
+*-service-key.json
+memori-service-key.json
