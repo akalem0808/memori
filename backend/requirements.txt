@@ -18,3 +18,5 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 python-magic
+# Cloud storage
+google-cloud-storage
