@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 env:
-  PROJECT_ID: white-sandbox-451605-j5
-  GCS_BUCKET: memori_me
+  PROJECT_ID: memori-app-2025
+  GCS_BUCKET: memori_storage
   SERVICE_NAME: memori-service
   REGION: us-central1
 
