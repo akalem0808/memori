@@ -2,13 +2,19 @@ fastapi
 uvicorn
 pydantic
 python-dotenv
-sentence-transformers
-transformers
-bertopic
+# Use specific minimal versions and avoid extra dependencies
+sentence-transformers==2.2.2
+# Use CPU-only version of transformers to reduce size
+transformers[torch]==4.30.0
+bertopic==0.15.0
+# Consider using openai-whisper==20230314 for a more stable version
 whisper
 chromadb
 numpy
+# Test dependencies - only needed for development, not production
 pytest
+# Auth dependencies
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
+python-magic
